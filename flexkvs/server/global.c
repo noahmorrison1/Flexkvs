@@ -17,9 +17,10 @@ void display(char * src,char *dest,size_t amount)
 	if(1)
 	{
 		int i = 0;
-		if(count > 50) return;
+		
 		while(i < amount)
 		{
+			if(count > 50) return;
 			uint8_t s = (uint8_t) *(src + i);
 			uint8_t d = (uint8_t) *(dest + i);
 			if(s != d)

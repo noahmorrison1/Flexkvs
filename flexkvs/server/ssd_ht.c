@@ -87,12 +87,30 @@ struct {
 #define PAGE_POS(page_ptr) ((char*)page_ptr - (char*)page_buffer.pages)/sizeof(struct page) 
 #endif
 
+#ifndef LOG_WRITE
+#define LOG_WRITE(page) fprintf(fptrs[rte_lcore_id()],"%d \n",PAGE_POS(page))
+#endif
+
+
+static char* base_name = "write_log:";
+static bn_size = 12;
+int* fptrs;
 
 void ssd_init()
 {
 	fd = open("output.dat",O_CREAT | O_RDWR);
     ssd = mmap(0, SSD_SIZE, PROT_READ | PROT_WRITE , MAP_SHARED, fd, 0);
     if(ssd == NULL) TEST_PRINT("SSD IS NULL\n");
+	
+	fptrs = malloc(sizeof(int)*rte_lcore_count());
+	for(int i = 0; i < rte_lcore_count(); i++)
+	{
+		char str[bn_size];
+		str[0] = base_name;
+		str[10] = (char)((int)'0'+ i);
+		str[11] = '\0';
+		fptrs[i] = fopen(str, "w");
+	}
 }
 
 void ssd_ht_init(void) {
@@ -532,6 +550,7 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 
 			uint16_t amount = rest > size ? size : rest;
 			
+			LOG_WRITE(cur_page);
 			WRITE_TO_BUFFER(dest,src,amount,page_buffer.pages);
 			
 			
@@ -804,9 +823,7 @@ void write_out(struct free_page_header* p)
     
     
 
-
-    TEST_PRINT_IF_2(p->num > 10000,"Writing to page: ",p->num);
-
+    //LOG_WRITE(p);
     WRITE_TO_SSD(dest,src,SSD_PAGE_SIZE,page_buffer.pages,ssd);
 	
 	if( (size_t)(dest - (char*)ssd) % 4096 != 0 ) printf("DEST not page aligned: %d \n",dest - (char*)ssd );
