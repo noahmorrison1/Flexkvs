@@ -38,7 +38,7 @@ void ssd_test_compare_if_wrong(char* c, test_item* it,struct ssd_line* c_it,int 
 	    if(c_it != NULL) display(it->val,c_it->val,it->vallen);
 	    printf("%s: FAILED at %d  :: %d\n",c,n,rte_lcore_id());
 	    sleep(1);
-	    //exit(0);
+	    exit(0);
 	    
 	}
 }
