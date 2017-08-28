@@ -232,7 +232,7 @@ struct ssd_line* ssd_ht_get( void* key, size_t keylen,uint32_t hv)
 	return current;
 }
 
-
+//poop
 size_t ssd_ht_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv)
 {
 	struct ssd_ht_entry* entry = ssd_ht + (hv % ssd_num_ht_entries);
