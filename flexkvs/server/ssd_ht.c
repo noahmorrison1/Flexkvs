@@ -83,6 +83,9 @@ struct {
 } page_buffer;
 
 
+#ifndef PAGE_POS
+#def PAGE_POS(page_ptr) ((char*)page_ptr - (char*)page_buffer.pages)/sizeof(struct page) 
+#endif
 
 
 void ssd_init()
