@@ -611,7 +611,7 @@ bool can_write_out(struct free_page_header* p)
 {
 	bool timed_out =(time(NULL) -  p->timestamp) >= TIMEOUT;
 	bool other =  p->writers <= 0 && (p->consumed || timed_out);
-	if( other && timed_out){ 
+	if( other && timed_out && !p->consumed){ 
 		printf("TIMED OUT at :: %lu    ID:: %d \n",
 		       ((char*)p - (char*)page_buffer.pages)/sizeof(struct page) ,rte_lcore_id());
 	}
