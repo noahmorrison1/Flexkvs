@@ -13,7 +13,7 @@ void display(char * src,char *dest,size_t amount)
 {
     int count = 0;
     size_t key = *((size_t* )src);
-	if(1)
+	if(0)
 	{
 		int i = 0;
 		if(count > 50) return;
