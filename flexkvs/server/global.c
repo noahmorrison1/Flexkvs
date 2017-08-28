@@ -13,6 +13,7 @@ void display(char * src,char *dest,size_t amount)
 {
     int count = 0;
     size_t key = *((size_t* )src);
+    printf("Starting Display \n");
 	if(1)
 	{
 		int i = 0;
