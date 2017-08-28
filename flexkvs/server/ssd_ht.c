@@ -84,7 +84,7 @@ struct {
 
 
 #ifndef PAGE_POS
-#def PAGE_POS(page_ptr) ((char*)page_ptr - (char*)page_buffer.pages)/sizeof(struct page) 
+#define PAGE_POS(page_ptr) ((char*)page_ptr - (char*)page_buffer.pages)/sizeof(struct page) 
 #endif
 
 
