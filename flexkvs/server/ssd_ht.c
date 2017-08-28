@@ -606,7 +606,11 @@ struct ssd_item* getFreeLogSlot()
 
 bool can_write_out(struct free_page_header* p)
 {
-	return p->writers <= 0 && (p->consumed || (time(NULL) -  p->timestamp) >= TIMEOUT);
+	bool timed_out =(time(NULL) -  p->timestamp) >= TIMEOUT;
+	bool other =  p->writers <= 0 && (p->consumed || timed_out);
+	if( other && time_out){ printf("TIMED OUT at :: %lu    ID:: %d \n",((char*)p - (Char*)page_buffer.pages)/sizeof(struct page) 
+				     ,rte_lcore_id());}
+	return other;
 }
 
 int write_out_all(int wo_count,struct page** pages)
