@@ -217,9 +217,9 @@ void ssd_test6()
     char * c = "TEST 6 ";
     printf("TEST 6 START \n");
     srand(10);
-    int n = 1000;
+    int n = 10000;
     test_item** items = calloc(n,sizeof(test_item*));
-    int maxsize = (1ULL << 30) / 100;
+    int maxsize = 4096*10;//(1ULL << 30) / 100;
     int num_opts = 1; 
     int num = 0;
     printf("MAXSIZE %d \n",maxsize);

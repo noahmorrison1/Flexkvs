@@ -123,6 +123,8 @@ struct ssd_header {
 	size_t next;
 	// offest into next page
 	uint16_t offset;
+	//for testing, what page in the buffer it was written from
+	size_t page;
 };
 
 struct ssd_line {

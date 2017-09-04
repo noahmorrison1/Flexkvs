@@ -1,6 +1,7 @@
 #ifndef TESTER_H_
 #define TESTER_H_
 
+#include "global.h"
 #include "database.h"
 #include <stdlib.h>
 #include <stdio.h>

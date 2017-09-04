@@ -4,8 +4,10 @@
 
 #include <stdlib.h>
 #include <stdint.h> 
+#include <string.h>
 #include "tester.h"
 #include <rte_lcore.h>
+#include <rte_spinlock.h>
 
 #ifndef TESTING 
 #define TESTING true
@@ -102,12 +104,56 @@
 //if(TESTING_FINAL) printf("Writing From BUFFER: %lu  to  SSD Page: %lu  :: %d \n",(char*)src - (char*)pages, ((char*)dest - (char*)ssd)/4096,rte_lcore_id() );
 #endif
 
+#ifndef PRINT
+#define PRINT(c) printf("%s \n",c)
+#endif
+
+
+#ifndef LOG
+#define LOG(l,n) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); RTE_UNLOCK(&logs.lock,"LOGS")
+#endif
+
+#ifndef LOGC
+#define LOGC(l,c) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); RTE_UNLOCK(&logs.lock,"LOGS")
+#endif
+
+#ifndef NUMLOGS
+#define NUMLOGS 4
+#endif
+
+#ifndef PAGE_LOG_I
+#define PAGE_LOG_I 0
+#endif
+
+#ifndef WRITE_OUT_LOG_I
+#define WRITE_OUT_LOG_I 1
+#endif
+
+
+#ifndef READ_LOG_I
+#define READ_LOG_I 2
+#endif
+
+#ifndef GEN_LOG_I
+#define GEN_LOG_I 3
+#endif
+
+
+
+struct {
+	char** base_names;
+	int* fptrs[NUMLOGS];
+	rte_spinlock_t lock;
+	size_t count;
+} logs;
 
 #include <unistd.h>
 #include <stdio.h>
 
 
 void global_init(void);
+
+void logs_init(void);
 
 void display(char * src,char *dest,size_t amount);
 

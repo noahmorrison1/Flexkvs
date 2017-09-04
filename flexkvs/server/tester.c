@@ -142,7 +142,7 @@ test_item** gen_n__reg_items(size_t vallen, int n)
 
 void test_init()
 {
-    rte_spinlock_init(&test_lock);
+  rte_spinlock_init(&test_lock);
 	//cache_test_init();
 	ssd_test_init();
 	//database_test_init();

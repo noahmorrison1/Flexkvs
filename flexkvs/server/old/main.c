@@ -11,9 +11,7 @@
 #include <rte_lcore.h>
 
 #include "iokvs.h"
-#include "database.h"
-#include "tester.h"
-#include "global.h"
+
 /* Use sockets */
 #ifndef LINUX_SOCKETS
 #define LINUX_SOCKETS 0
@@ -60,7 +58,6 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-
 
 #include "protocol_binary.h"
 
@@ -696,7 +693,50 @@ static size_t n_ready = 0;
 
 static int processing_thread(void *data)
 {
-	return 0;
+#if LINUX_SOCKETS
+    void *bufs[BATCH_MAX];
+    int i, fd;
+#elif LINUX_DPDK
+    unsigned p;
+#endif
+    struct item_allocator ia;
+    size_t had_pkts, total_reqs = 0, total_clean = 0;
+    static uint16_t qcounter;
+    uint16_t q;
+
+    ialloc_init_allocator(&ia);
+    q = __sync_fetch_and_add(&qcounter, 1);
+#if LINUX_SOCKETS
+    for (i = 0; i < BATCH_MAX; i++) {
+        bufs[i] = malloc(MAX_MSGSIZE);
+    }
+    fd = dup(sock_fd);
+#elif LINUX_DPDK
+    p = 0;
+#endif
+
+    iallocs[q] = &ia;
+    __sync_fetch_and_add(&n_ready, 1);
+
+    printf("Worker starting\n");
+
+    while (1) {
+#if LINUX_SOCKETS
+        had_pkts = packet_loop(fd, bufs, &ia);
+#else
+        had_pkts = packet_loop(&ia, p, q);
+        p = (p + 1) % num_ports;
+#endif
+        total_clean += clean_log(&ia, !had_pkts);
+#if 0
+        if (total_reqs / 100000 != (total_reqs + had_pkts) / 100000) {
+            printf("%u: total=%10zu  clean=%10zu\n", q, total_reqs, total_clean);
+        }
+#endif
+        total_reqs += had_pkts;
+    }
+
+    return 0;
 }
 
 static void maintenance(void)
@@ -720,25 +760,24 @@ int main(int argc, char *argv[])
         fprintf(stderr, "rte_eal_init failed: %s\n", rte_strerror(rte_errno));
         return -1;
     }
+
     argc -= n;
     argv += n;
     settings_init(argc - n, argv + n);
 
-		global_init();
-    database_init();
+    hasht_init();
+    ialloc_init();
     printf("Initailizing networking\n");
     rte_mempool_ops_init();
     network_init();
     printf("Networking initialized\n");
-		
-    //test_init();
 
-    rte_eal_mp_remote_launch(test_init, NULL, SKIP_MASTER);
+    iallocs = calloc(rte_lcore_count() - 1, sizeof(*iallocs));
+    rte_eal_mp_remote_launch(processing_thread, NULL, SKIP_MASTER);
     while (n_ready < rte_lcore_count() - 1);
-    /*while(1)
-    {
-        //waiting
-    }*/
-    rte_mempool_free(mempool);
+    printf("Starting maintenance\n");
+    while (1) {
+        maintenance();
+    }
     return 0;
 }

@@ -87,30 +87,36 @@ struct {
 #define PAGE_POS(page_ptr) ((char*)page_ptr - (char*)page_buffer.pages)/sizeof(struct page) 
 #endif
 
-#ifndef LOG_WRITE
-#define LOG_WRITE(page) fprintf(fptrs[rte_lcore_id()],"%d \n",PAGE_POS(page))
+
+
+
+#ifndef PAGE_LOG_WRITE
+#define PAGE_LOG_WRITE(page) LOG(PAGE_LOG_I,PAGE_POS(page))
+#endif
+
+#ifndef WRITE_OUT_LOG_WRITE
+#define WRITE_OUT_LOG_WRITE(page) LOG(WRITE_OUT_LOG_I,PAGE_POS(page))
 #endif
 
 
-static char* base_name = "write_log:";
-static bn_size = 12;
-int* fptrs;
+#ifndef READ_LOG_WRITE
+#define READ_LOG_WRITE(page) LOG(READ_LOG_I,page)
+#endif
+
+#ifndef GEN_LOG_WRITE
+#define GEN_LOG_WRITE(c) LOGC(GEN_LOG_I,c)
+#endif
+
+
+
+
 
 void ssd_init()
 {
-	fd = open("output.dat",O_CREAT | O_RDWR);
+	  fd = open("output.dat",O_CREAT | O_RDWR);
     ssd = mmap(0, SSD_SIZE, PROT_READ | PROT_WRITE , MAP_SHARED, fd, 0);
     if(ssd == NULL) TEST_PRINT("SSD IS NULL\n");
-	
-	fptrs = malloc(sizeof(int)*rte_lcore_count());
-	for(int i = 0; i < rte_lcore_count(); i++)
-	{
-		char str[bn_size];
-		str[0] = base_name;
-		str[10] = (char)((int)'0'+ i);
-		str[11] = '\0';
-		fptrs[i] = fopen(str, "w");
-	}
+	 
 }
 
 void ssd_ht_init(void) {
@@ -175,16 +181,18 @@ void ssd_ht_init(void) {
 
 struct ssd_line* ssd_ht_get( void* key, size_t keylen,uint32_t hv)
 {
-    
+  
+	
 	struct ssd_ht_entry* entry = ssd_ht + (hv % ssd_num_ht_entries);
 	
     // for testing
-    size_t full_key = *((size_t*)key);
+  size_t full_key = *((size_t*)key);
     
-    
+  GEN_LOG_WRITE("SSD GET START");
+	
 	struct ssd_line *current = NULL;
 	
-	    RTE_LOCK(&entry->lock,"ENTRY");
+	RTE_LOCK(&entry->lock,"ENTRY");
 	
 
 
@@ -228,6 +236,8 @@ struct ssd_line* ssd_ht_get( void* key, size_t keylen,uint32_t hv)
 	done:
 
 	RTE_UNLOCK(&entry->lock,"ENTRY");
+	
+	GEN_LOG_WRITE("SSD GET END");
 	    
 	return current;
 }
@@ -235,13 +245,15 @@ struct ssd_line* ssd_ht_get( void* key, size_t keylen,uint32_t hv)
 //poop
 size_t ssd_ht_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv)
 {
+	GEN_LOG_WRITE("SSD SET START");
+	
 	struct ssd_ht_entry* entry = ssd_ht + (hv % ssd_num_ht_entries);
 
 	size_t version = -1;
 
-	    RTE_LOCK(&entry->lock,"ENTRY");
+	RTE_LOCK(&entry->lock,"ENTRY");
 
-        size_t full_key = *((size_t*)key);
+  size_t full_key = *((size_t*)key);
 
 		// if entry invalid, write a new one
 		if(!entry->valid)
@@ -300,6 +312,8 @@ size_t ssd_ht_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t h
 	done:
 	
 	    RTE_UNLOCK(&entry->lock,"ENTRY");
+	
+			GEN_LOG_WRITE("SSD GET END");
 
 	    return version;
 }
@@ -312,7 +326,10 @@ bool ssd_key_matches(struct ssd_line* current, void* key, size_t keylen)
     //TEST_PRINT_FINAL("READING KEY: ", *((size_t*)current->key) )
     
     //display only outputs differences
-	display(current->key,key,keylen);
+	//display(current->key,key,keylen);
+	
+	
+	GEN_LOG_WRITE("SSD KEY MATCHES");
 	
 	return __builtin_memcmp(current->key,key,keylen) == 0;
 }
@@ -320,6 +337,8 @@ bool ssd_key_matches(struct ssd_line* current, void* key, size_t keylen)
 
 bool ssd_item_key_matches(struct ssd_item* it, void* key,size_t keylen)
 {
+	GEN_LOG_WRITE("SSD ITEM KEY MATCHES");
+	
 	size_t size = keylen < sizeof(it->key) ? keylen : sizeof(it->key);
 	return it->keylen == keylen && __builtin_memcmp(&it->key,key,size) == 0;
 }
@@ -327,6 +346,8 @@ bool ssd_item_key_matches(struct ssd_item* it, void* key,size_t keylen)
 
 void ssd_overwrite(struct ssd_item *it, void* val, size_t vallen,void* key, size_t keylen)
 {
+	GEN_LOG_WRITE("SSD OVERWRITE START");
+	
 	it->valid = true;
 	it->num_headers = 1;
 	it->keylen = keylen;
@@ -340,12 +361,16 @@ void ssd_overwrite(struct ssd_item *it, void* val, size_t vallen,void* key, size
 
 	ssd_write(srcs,sizes,2,it);
 	it->version++;
+	
+	GEN_LOG_WRITE("SSD OVERWRITE END");
 }
 
 
 
 struct ssd_item* ssd_write_entry(void *key, size_t keylen, void* val, size_t vallen, uint32_t hv)
 {
+	GEN_LOG_WRITE("SSD WRITE ENTRY START");
+	
 	struct ssd_item* it = getFreeLogSlot();
 	it->valid = true;
 	it->hv = hv;
@@ -364,12 +389,18 @@ struct ssd_item* ssd_write_entry(void *key, size_t keylen, void* val, size_t val
 	
 	
 	ssd_write(srcs,sizes,2,it);
+	
+	GEN_LOG_WRITE("SSD WRITE ENTRY END");
+	
 	return it;
 
 }
 
 void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* it )
 {
+	GEN_LOG_WRITE("SSD WRITE START");
+	
+	
 	//Can have written up to PAGES PER CORE before staging some to disk
 	
 	//# of pages that have been written
@@ -495,33 +526,33 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 				    	ssd_free_pages.offset += totsize + sizeof(struct ssd_header);
 				    }
 
-                    //set the last ptrs and release them, 
-                    //might possibly move up to more restrictd section of code
-                    if(next_ptr != NULL)
-                    {
-                        *next_ptr = page_num;
-                        //dont count free_page_header in offset because not going to be written
-                        *next_offset = offset - sizeof(struct free_page_header);
-                        struct free_page_header* old_header = (struct free_page_header*)old_page; 
-                        
-                        //done writing to old page
-                        RTE_LOCK(&old_header->lock,"OLD_HEADER");
-                            old_header->writers--;
-                        RTE_UNLOCK(&old_header->lock,"OLD_HEADER");        
-                    }
+						//set the last ptrs and release them, 
+						//might possibly move up to more restrictd section of code
+						if(next_ptr != NULL)
+						{
+								*next_ptr = page_num;
+								//dont count free_page_header in offset because not going to be written
+								*next_offset = offset - sizeof(struct free_page_header);
+								struct free_page_header* old_header = (struct free_page_header*)old_page; 
+
+								//done writing to old page
+								RTE_LOCK(&old_header->lock,"OLD_HEADER");
+										old_header->writers--;
+								RTE_UNLOCK(&old_header->lock,"OLD_HEADER");        
+						}
 
                     
 
-                    RTE_UNLOCK(&ssd_free_pages.lock,"SSD_FREE_PAGES");
+            RTE_UNLOCK(&ssd_free_pages.lock,"SSD_FREE_PAGES");
                     
                     
 
 
 
 				  if(wo_index >= PAGES_PER_CORE -1) 
-                  {
-                      wo_index = write_out_all(wo_index,to_write_out);
-                  }   
+					{
+							wo_index = write_out_all(wo_index,to_write_out);
+					}   
 
 
 
@@ -529,17 +560,23 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 
 
 				//add this as one of the pages im responsible for
-		    	to_write_out[wo_index] = cur_page;
-		    	wo_index++;
+				to_write_out[wo_index] = cur_page;
+				wo_index++;
 
-                if(offset > sizeof(struct free_page_header))
-                {
-                    printf("Writing into middle of page: %lu  page :: %d  amount :: %d   KEY :: %lu    ID :: %d \n",offset - sizeof(struct free_page_header),((char*)cur_page - (char*)page_buffer.pages)/sizeof(struct page),size, key, rte_lcore_id() );
-                }
+				//TESTING
+				if(offset > sizeof(struct free_page_header))
+				{
+						printf("Writing into middle of page: %lu  page :: %d  amount :: %d   KEY :: %lu    ID :: %d \n",offset - sizeof(struct free_page_header),((char*)cur_page - (char*)page_buffer.pages)/sizeof(struct page),size, key, rte_lcore_id() );
+				}
                 
 				struct ssd_header* new_header = (struct ssd_header*)dest;
 				new_header->size = totsize > rest ? rest : totsize;
 				new_header->next = 0;
+				new_header->offset = 0;
+				
+				//TESTING
+				new_header->page = PAGE_POS(cur_page);
+				
 				next_ptr = &(new_header->next);
 				next_offset = &(new_header->offset);
 				it->num_headers++;
@@ -550,7 +587,9 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 
 			uint16_t amount = rest > size ? size : rest;
 			
-			LOG_WRITE(cur_page);
+			//TESTING
+			PAGE_LOG_WRITE(cur_page);
+			
 			WRITE_TO_BUFFER(dest,src,amount,page_buffer.pages);
 			
 			
@@ -589,6 +628,9 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 
 	//write out all the pages for which we are responsible
 	forced_write_out_all(wo_index,to_write_out);
+	
+	
+	GEN_LOG_WRITE("SSD WRITE END");
 }
 
 
@@ -602,15 +644,19 @@ size_t ssd_delete(void *key, size_t keylen, uint32_t hv)
 
 void swap_current_page()
 {
+		GEN_LOG_WRITE("SSD SWAP PAGE START");
     ssd_free_pages.offset = sizeof(struct free_page_header);
     ssd_free_pages.page_num++;
     ssd_free_pages.cur_page = get_new_page(ssd_free_pages.page_num);
+	  GEN_LOG_WRITE("SSD SWAP PAGE END");
 }
 
 
 
 struct ssd_item* getFreeLogSlot()
 {
+		 GEN_LOG_WRITE("SSD GET FREE LOG SLOT START");
+	
 	    RTE_LOCK(&ssd_free_log.lock,"SSD_FREE_LOG");
 	    
 	    if(ssd_free_log.head == ssd_free_log.tail){
@@ -621,6 +667,8 @@ struct ssd_item* getFreeLogSlot()
 	   	ssd_free_log.head = head->next == NULL ? head+1 : head->next;
 
 	    RTE_UNLOCK(&ssd_free_log.lock,"SSD_FREE_LOG");
+	
+	   GEN_LOG_WRITE("SSD GET FREE LOG SLOT END");
 	    
 	return head;
 }
@@ -628,17 +676,23 @@ struct ssd_item* getFreeLogSlot()
 
 bool can_write_out(struct free_page_header* p)
 {
+	GEN_LOG_WRITE("SSD CAN WRITE OUT START");
 	bool timed_out =(time(NULL) -  p->timestamp) >= TIMEOUT;
 	bool other =  p->writers <= 0 && (p->consumed || timed_out);
 	if( other && timed_out && !p->consumed){ 
 		printf("TIMED OUT at :: %lu    ID:: %d \n",
 		       ((char*)p - (char*)page_buffer.pages)/sizeof(struct page) ,rte_lcore_id());
 	}
+	
+	GEN_LOG_WRITE("SSD CAN WRITE OUT END");
+
 	return other;
 }
 
 int write_out_all(int wo_count,struct page** pages)
 {
+		GEN_LOG_WRITE("SSD WRITE OUT ALL START");
+
 	int front = 0;
 	
 	    
@@ -710,6 +764,10 @@ int write_out_all(int wo_count,struct page** pages)
 		//note this could if I write bad code lead to infinite loop
 
 	}while(front == wo_count);
+	
+	
+	GEN_LOG_WRITE("SSD WRITE OUT ALL END");
+
 
 	return pages[front] == NULL  ? front : front + 1;	
 
@@ -767,6 +825,8 @@ int write_out_all_with_lock(int wo_count,struct page** pages)
 
 void forced_write_out_all(int wo_count,struct page** pages)
 {
+	GEN_LOG_WRITE("SSD FORCED WRITE OUT START");
+
 	int left = wo_count;
 	while(left > 0)
 	{
@@ -778,12 +838,18 @@ void forced_write_out_all(int wo_count,struct page** pages)
 		    
 		}
 	}
+	GEN_LOG_WRITE("SSD FORCED WRITE OUT END");
+
 }
 
 
 //must have pagg_header lock to enter here
 void write_out(struct free_page_header* p)
 {
+	
+	GEN_LOG_WRITE("SSD WRITE OUT START");
+	
+	
 	char* dest = ssd;
 
 	dest += p->num * SSD_PAGE_SIZE; 
@@ -822,8 +888,9 @@ void write_out(struct free_page_header* p)
 
     
     
-
-    //LOG_WRITE(p);
+		//TESTING
+    WRITE_OUT_LOG_WRITE(p);
+	
     WRITE_TO_SSD(dest,src,SSD_PAGE_SIZE,page_buffer.pages,ssd);
 	
 	if( (size_t)(dest - (char*)ssd) % 4096 != 0 ) printf("DEST not page aligned: %d \n",dest - (char*)ssd );
@@ -834,6 +901,8 @@ void write_out(struct free_page_header* p)
 	p->written_out = true;
 	dest += sizeof(struct ssd_header);
 	clear_buffer(p);
+	
+	GEN_LOG_WRITE("SSD WRITE OUT END");
 }
 
 
@@ -841,7 +910,7 @@ void write_out(struct free_page_header* p)
 void clear_buffer(struct free_page_header* p)
 {
 
-	
+	GEN_LOG_WRITE("SSD CLEAR BUFFER START");
 
 	struct page* head = &(page_buffer.pages[page_buffer.head]);
 	struct free_page_header* head_header = (struct free_page_header*)head;
@@ -882,19 +951,27 @@ void clear_buffer(struct free_page_header* p)
     }
     buff_too_close();
 	RTE_UNLOCK(&page_buffer.lock,"PAGE_BUFFER 2");
+	
+	
+	GEN_LOG_WRITE("SSD CLEAR BUFFER END");
 }
 
 //also only for sanity check
 inline void buff_too_close()
 {
+		GEN_LOG_WRITE("SSD BUFF TO CLOSE START");
+	
     int diff = page_buffer.tail < page_buffer.head ? page_buffer.head - page_buffer.tail : page_buf_size - page_buffer.tail + page_buffer.head;
     if(diff < 5) printf("DIFF BETWEEN HEAD AND TAIL:  %d  \n",diff);
+	
+		GEN_LOG_WRITE("SSD BUFF TO CLOSE END");
 }
 
 
 void* get_new_page(int num)
 {
-
+		GEN_LOG_WRITE("SSD GET NEW PAGE START");
+	
 
     RTE_LOCK(&page_buffer.lock,"PAGE_BUFFER 1");
 
@@ -915,6 +992,9 @@ void* get_new_page(int num)
     header->written_out = false;
     header->writers = 0;
     header->consumed = false;
+	
+		GEN_LOG_WRITE("SSD GET NEW PAGE END");
+	
     return (void*)(p);
 }
 
@@ -922,7 +1002,8 @@ void* get_new_page(int num)
 /** also uses the mmapped file **/ 
 struct ssd_line* ssd_read(struct ssd_item* it,void* memory)
 {
-    
+  	GEN_LOG_WRITE("SSD READ START");  
+	
     size_t full_key =  it->key;
     TEST_PRINT_IF(full_key > 100, "START READ")
     
@@ -940,6 +1021,8 @@ struct ssd_line* ssd_read(struct ssd_item* it,void* memory)
 	src += it->first_page*SSD_PAGE_SIZE + it->offset;
 	struct ssd_header* ssd_head = (struct ssd_header* )(src );
 	
+	//TESTING
+	READ_LOG_WRITE(ssd_head->page);
 
 	src+= sizeof(struct ssd_header);
 	size_t rest = (SSD_PAGE_SIZE - it->offset - sizeof(struct ssd_header) ) ;
@@ -960,6 +1043,10 @@ struct ssd_line* ssd_read(struct ssd_item* it,void* memory)
 			src += ssd_head->next*SSD_PAGE_SIZE + ssd_head->offset;
 			rest = (SSD_PAGE_SIZE - ssd_head->offset - sizeof(struct ssd_header) ) ;
 			ssd_head = (struct ssd_header* )(src );
+			
+			//TESTING
+			READ_LOG_WRITE(ssd_head->page);
+			
 			src+= sizeof(struct ssd_header);
 
 		}
@@ -982,12 +1069,17 @@ struct ssd_line* ssd_read(struct ssd_item* it,void* memory)
 			src += ssd_head->next*SSD_PAGE_SIZE + ssd_head->offset;
 			rest = (SSD_PAGE_SIZE - ssd_head->offset - sizeof(struct ssd_header) ) ;		
 			ssd_head = (struct ssd_header* )(src );
+			
+			//TESTING
+			if(ssd_head != NULL) READ_LOG_WRITE(ssd_head->page);
 			src+= sizeof(struct ssd_header);
 
 		}
 	}
 
 
+	GEN_LOG_WRITE("SSD READ END");
+	
 	return header;
 }
 
