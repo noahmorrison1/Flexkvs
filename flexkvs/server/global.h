@@ -162,6 +162,13 @@ struct {
 	size_t count;
 } logs;
 
+struct calloc_log{
+	char* start;
+	size_t size;
+	size_t count;
+	char* name;
+};
+
 #include <unistd.h>
 #include <stdio.h>
 
@@ -169,6 +176,10 @@ struct {
 void global_init(void);
 
 void logs_init(void);
+
+void valgrind_init(void);
+
+void* new_calloc(size_t num, size_t size);
 
 void display(char * src,char *dest,size_t amount);
 

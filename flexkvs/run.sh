@@ -1,2 +1,2 @@
-sudo rm log*:*
+sudo rm *log:*
 sudo ./flexkvs
