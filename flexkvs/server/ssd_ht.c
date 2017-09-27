@@ -13,7 +13,7 @@ static struct ssd_item* ssd_log;
 // file descriptor for the 
 static int fd;
 //pointer to the beggining of the file, which is the backend of the DB
-static void* ssd;
+static char* ssd;
 //the number of pages in the circular page buffer.buffer
 // This buffer is used to store pages before being staged to SSD/HD
 static uint16_t page_buf_size;
@@ -103,9 +103,23 @@ struct {
 #define READ_LOG_WRITE(page) LOG(READ_LOG_I,page)
 #endif
 
-#ifndef GEN_LOG_WRITE
-#define GEN_LOG_WRITE(c) LOGC(GEN_LOG_I,c)
+#ifndef WRITE_TO_BUFFER
+#define WRITE_TO_BUFFER(dest,src,amount,start) memcpy(dest,src,amount); for(int c = 0; c < amount; c++) {size_t pos = ( (dest + c) - (char*)start) % sizeof(struct page); if( pos >= 0 && pos <= sizeof(struct free_page_header)) { GEN_LOG_WRITE_2("WRITING PAST BOUNDARY:",PAGE_POS(dest)); exit(0); } }
 #endif
+
+#ifndef READ_LOG_BREAK
+#define READ_LOG_BREAK() LOG_BREAK(READ_LOG_I)
+#endif
+
+#ifndef WRITE_LOG_BREAK
+#define WRITE_LOG_BREAK() LOG_BREAK(WRITE_OUT_LOG_I)
+#endif
+
+#ifndef PAGE_LOG_BREAK
+#define PAGE_LOG_BREAK() LOG_BREAK(PAGE_LOG_I)
+#endif
+
+
 
 
 
@@ -171,7 +185,7 @@ void ssd_ht_init(void) {
     }
 
 
-	ssd_free_pages.page_num = 0;
+	  ssd_free_pages.page_num = 1;
     swap_current_page();
 
     
@@ -258,11 +272,14 @@ size_t ssd_ht_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t h
 		// if entry invalid, write a new one
 		if(!entry->valid)
 		{
-		 	entry->it = ssd_write_entry(key,keylen,val,vallen,hv);
+			struct ssd_item* it_test = ssd_write_entry(key,keylen,val,vallen,hv);
+			GEN_LOG_WRITE("RETURNED FROM ENTRY WRITE");
+		 	entry->it = it_test;
+			
 		 	entry->valid = true;
 		 	//version is for syncing with cache
 		 	version = entry->it->version;
-		 	
+		 	GEN_LOG_WRITE("SET HEADING TOWARD DONE");
 		 	goto done;
 		}
 		else // look for key, if not there add it
@@ -310,10 +327,10 @@ size_t ssd_ht_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t h
 	    
 
 	done:
-	
+			GEN_LOG_WRITE("SSD SET UNLOCKING");
 	    RTE_UNLOCK(&entry->lock,"ENTRY");
 	
-			GEN_LOG_WRITE("SSD GET END");
+			GEN_LOG_WRITE("SSD SET END");
 
 	    return version;
 }
@@ -369,7 +386,11 @@ void ssd_overwrite(struct ssd_item *it, void* val, size_t vallen,void* key, size
 
 struct ssd_item* ssd_write_entry(void *key, size_t keylen, void* val, size_t vallen, uint32_t hv)
 {
+	size_t rt1 = (size_t)__builtin_return_address(0);
 	GEN_LOG_WRITE("SSD WRITE ENTRY START");
+	
+	
+	
 	
 	struct ssd_item* it = getFreeLogSlot();
 	it->valid = true;
@@ -390,7 +411,12 @@ struct ssd_item* ssd_write_entry(void *key, size_t keylen, void* val, size_t val
 	
 	ssd_write(srcs,sizes,2,it);
 	
-	GEN_LOG_WRITE("SSD WRITE ENTRY END");
+	GEN_LOG_WRITE("SSD WRITE ENTRY END: ");
+	size_t rt2 = (size_t) __builtin_return_address(0);
+	GEN_LOG_WRITE_2("SSD WRITE ENTRY RETURN ADDRESS START: ",rt1);
+	GEN_LOG_WRITE_2("SSD WRITE ENTRY RETURN ADDRESS END: ",rt2);
+	GEN_LOG_WRITE_2("SSD WRITE ENTRY RETURN ADDRESS END: ",rt2);
+	
 	
 	return it;
 
@@ -398,6 +424,7 @@ struct ssd_item* ssd_write_entry(void *key, size_t keylen, void* val, size_t val
 
 void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* it )
 {
+	
 	GEN_LOG_WRITE("SSD WRITE START");
 	
 	
@@ -480,12 +507,12 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 			    	        
 			    	        //note we have ssd_free_page_lock
 			    	        swap_current_page();
-                            
-                            //reset here so when we continue our old_page is 
-                            //set correcctly
-                            cur_page = old_page;
-                            
-                            RTE_UNLOCK(&ssd_free_pages.lock,"SSD_FREE_PAGES");
+
+										//reset here so when we continue our old_page is 
+										//set correcctly
+										cur_page = old_page;
+
+										RTE_UNLOCK(&ssd_free_pages.lock,"SSD_FREE_PAGES");
                             
                             
 			    	        deadlock++;
@@ -502,6 +529,14 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 			    	page_num = ssd_free_pages.page_num;
 			    	offset = ssd_free_pages.offset;
 			    	dest = ((char*)cur_page) + offset;
+				
+				
+						//testing
+						if(page_num == 0) 
+						{
+							GEN_LOG_WRITE("WR: PAGE NUM 0");
+							exit(0);
+						}
 
             
 			    	if(it->first_page == -1)
@@ -589,6 +624,11 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 			
 			//TESTING
 			PAGE_LOG_WRITE(cur_page);
+			if( ((struct free_page_header*)cur_page)->num == 0)
+			{
+				GEN_LOG_WRITE("WR: PAGE NUM BECAME 0");
+				exit(0);
+			}
 			
 			WRITE_TO_BUFFER(dest,src,amount,page_buffer.pages);
 			
@@ -629,7 +669,7 @@ void ssd_write(void** srcs, size_t *sizes, uint16_t num_srcs, struct ssd_item* i
 	//write out all the pages for which we are responsible
 	forced_write_out_all(wo_index,to_write_out);
 	
-	
+	PAGE_LOG_BREAK();
 	GEN_LOG_WRITE("SSD WRITE END");
 }
 
@@ -726,32 +766,34 @@ int write_out_all(int wo_count,struct page** pages)
 
 			if(pages[i] == ssd_free_pages.cur_page)
 			{
+				GEN_LOG_WRITE("WOA:TRYING TO WRITE CURRENT PAGE");
 				freeLock = RTE_TRYLOCK(&ssd_free_pages.lock,"SSD_FREE_PAGE");
 				gotLock = gotLock && freeLock;
 			}
 
 			//if we can write out page do so, otherwise, if we need to move overwrite head(front), do so 
 			if(header->written_out) {
-
+				GEN_LOG_WRITE("WOA: ALREADY WRITTEN OUT");
 				pages[i] = NULL;
 			}
 			else if(gotLock && can_write_out(header) )
 			{
-
+				GEN_LOG_WRITE("WOA: ENTERED CAN WRITE OUT AREA");
 				if(freeLock)
 				{
 					swap_current_page();	
 				}
 				
 				write_out(header);
-                pages[i] = NULL;
+				GEN_LOG_WRITE("WOA: SETTING PAGE TO NULL");
+        pages[i] = NULL;
 			}
 			else if(front == i)
 			{ 
 				front++;
 			}
 			else { // move forward this header ptr and then front
-
+				GEN_LOG_WRITE("WOA:MOVING FRONT FORWARD");
 				pages[front] = pages[i];
 				pages[i] = NULL;
 				// go while page is either written here or by someone else, and less than i
@@ -839,7 +881,7 @@ void forced_write_out_all(int wo_count,struct page** pages)
 		}
 	}
 	GEN_LOG_WRITE("SSD FORCED WRITE OUT END");
-
+	WRITE_LOG_BREAK();
 }
 
 
@@ -857,14 +899,16 @@ void write_out(struct free_page_header* p)
 	char* src = (char*)(p+1);
 	
 	
+	//TESTING
 	
+
 	
    /* struct {
         size_t last_written[10000];
         uint32_t head;
         rte_spinlock_t lock;
         
-    } written_counter;*/
+    } written_counter;
     
     if(TESTING) {
     RTE_LOCK(&written_counter.lock, "WRITTEN COUNTER");
@@ -884,23 +928,36 @@ void write_out(struct free_page_header* p)
         written_counter.head = written_counter.head >= 10000 - 1 ? 0 : written_counter.head + 1;
         
     RTE_UNLOCK(&written_counter.lock,"WRITTEN COUNTER");
-    }
+    }*/
 
     
     
 		//TESTING
     WRITE_OUT_LOG_WRITE(p);
 	
+	  
     WRITE_TO_SSD(dest,src,SSD_PAGE_SIZE,page_buffer.pages,ssd);
+	  GEN_LOG_WRITE("SUCCESSFUL WRITE TO SSD");
 	
-	if( (size_t)(dest - (char*)ssd) % 4096 != 0 ) printf("DEST not page aligned: %d \n",dest - (char*)ssd );
 	
-
+	if(p->num == 0)
+	{
+		GEN_LOG_WRITE_2("WO:PAGE POS: ",PAGE_POS(p));
+		GEN_LOG_WRITE_2("WO:NUM WRITERS:",p->writers);
+		GEN_LOG_WRITE_2("WO:WRITTEN OUT",p->written_out);
+		GEN_LOG_WRITE("WO: PAGE NUM 0");
+		exit(0);
+	}
+	
+	//if( (size_t)(dest - (char*)ssd) % 4096 != 0 ) printf("DEST not page aligned: %d \n",dest - (char*)ssd );
+	
+  GEN_LOG_WRITE_2("SYNCING PAGE: ",(dest - (char*)ssd) / 4096 );
 	msync(dest,SSD_PAGE_SIZE, MS_SYNC);
+	GEN_LOG_WRITE("SUCCESSFUL SYNC TO SSD");
 	
 	p->written_out = true;
 	dest += sizeof(struct ssd_header);
-	clear_buffer(p);
+	//clear_buffer(p);
 	
 	GEN_LOG_WRITE("SSD WRITE OUT END");
 }
@@ -993,6 +1050,13 @@ void* get_new_page(int num)
     header->writers = 0;
     header->consumed = false;
 	
+		//testing
+		if(num == 0)
+		{
+			GEN_LOG_WRITE("GNP:NEW PAGE NUM IS 0");
+			exit(0);
+		}
+	
 		GEN_LOG_WRITE("SSD GET NEW PAGE END");
 	
     return (void*)(p);
@@ -1002,6 +1066,7 @@ void* get_new_page(int num)
 /** also uses the mmapped file **/ 
 struct ssd_line* ssd_read(struct ssd_item* it,void* memory)
 {
+    
   	GEN_LOG_WRITE("SSD READ START");  
 	
     size_t full_key =  it->key;
@@ -1079,13 +1144,13 @@ struct ssd_line* ssd_read(struct ssd_item* it,void* memory)
 
 
 	GEN_LOG_WRITE("SSD READ END");
-	
+	READ_LOG_BREAK();
 	return header;
 }
 
 struct ssd_line* ssd_read_key(struct ssd_item* it,void* memory)
 {
-    
+  READ_LOG_BREAK();  
 	struct ssd_line* header = memory;
 	header->vallen = it->vallen;
 	header->keylen = it->keylen;
@@ -1121,6 +1186,7 @@ struct ssd_line* ssd_read_key(struct ssd_item* it,void* memory)
 		}
 	}
 
+	READ_LOG_BREAK();
 	return header;
 }
 

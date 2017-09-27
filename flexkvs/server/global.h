@@ -95,9 +95,8 @@
 #endif
 
 
-#ifndef WRITE_TO_BUFFER
-#define WRITE_TO_BUFFER(dest,src,amount,start) memcpy(dest,src,amount); if(TESTING_FINAL) printf("Writing to Buffer %lu - %lu  :: %d \n",(char*)dest - (char*)start,(char*)dest - (char*)start + amount ,rte_lcore_id());
-#endif
+//if(TESTING_FINAL) printf("Writing to Buffer %lu - %lu  :: %d \n",(char*)dest - (char*)start,(char*)dest - (char*)start + amount ,rte_lcore_id());
+
 
 #ifndef WRITE_TO_SSD
 #define WRITE_TO_SSD(dest,src,amount,pages,ssd) memmove(dest,src,SSD_PAGE_SIZE); if(TESTING_FINAL) { for(int u = 32; u < amount - SSD_MIN_ENTRY_SIZE -1 ; u++) {if(src[u] == 0) printf("WRITING 0: %d  ::   page :: %lu  ID :: %d  \n ",u,((char*)src - (char*)pages)/sizeof(struct page),rte_lcore_id()); } }
@@ -110,11 +109,15 @@
 
 
 #ifndef LOG
-#define LOG(l,n) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); RTE_UNLOCK(&logs.lock,"LOGS")
+#define LOG(l,n) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); RTE_UNLOCK(&logs.lock,"LOGS"); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef LOGC
-#define LOGC(l,c) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); RTE_UNLOCK(&logs.lock,"LOGS")
+#define LOGC(l,c) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); RTE_UNLOCK(&logs.lock,"LOGS"); fflush(logs.fptrs[l][rte_lcore_id()])
+#endif
+
+#ifndef LOGCN
+#define LOGCN(l,c,n) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s %lu :: %d \n",c,n,logs.count); RTE_UNLOCK(&logs.lock,"LOGS"); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef NUMLOGS
@@ -136,6 +139,18 @@
 
 #ifndef GEN_LOG_I
 #define GEN_LOG_I 3
+#endif
+
+#ifndef GEN_LOG_WRITE
+#define GEN_LOG_WRITE(c) LOGC(GEN_LOG_I,c)
+#endif
+
+#ifndef GEN_LOG_WRITE_2
+#define GEN_LOG_WRITE_2(c,n) LOGCN(GEN_LOG_I,c,n)
+#endif
+
+#ifndef LOG_BREAK
+#define LOG_BREAK(l) LOGC(l,"")
 #endif
 
 

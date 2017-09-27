@@ -237,16 +237,19 @@ void ssd_test6()
         if(i % 1 == 0) printf("I: %d   OPT: %d   :: %d\n",i,opt,rte_lcore_id());
         switch(opt){
             case  0 : ;            // generate an item and check for it
+										GEN_LOG_WRITE("TEST PUTTING START");
                     size = (rand() % maxsize) + sizeof(size_t);
                     items[num] = gen_reg_item(size);
                     printf("PUTTING ITEM: %lu  :: %d \n",*((size_t*)(items[num]->key)),rte_lcore_id() );
 
                     ssd_test_put(items[num]);
-
+										GEN_LOG_WRITE("TEST PUT SUCCESSFUL, GETTING");
                     c_it = ssd_test_get(items[num]);
+										GEN_LOG_WRITE("TEST GETTING SUCCESSFUL, COMPARING");
                     ssd_test_compare_if_wrong(c,items[num],c_it,i);
-
+										GEN_LOG_WRITE("TEST COMPARING SUCESSFUL");
                     num++;
+										GEN_LOG_WRITE("TEST PUTTING END");
                     break;
             // search for a random item
             case 1 : ;
