@@ -141,6 +141,10 @@
 #define GEN_LOG_I 3
 #endif
 
+#ifndef VALG_LOG_I
+#define VALG_LOG_I 3
+#endif
+
 #ifndef GEN_LOG_WRITE
 #define GEN_LOG_WRITE(c) LOGC(GEN_LOG_I,c)
 #endif
@@ -149,10 +153,25 @@
 #define GEN_LOG_WRITE_2(c,n) LOGCN(GEN_LOG_I,c,n)
 #endif
 
+#ifndef VALG_LOG_WRITE
+#define VALG_LOG_WRITE(c) LOGC(VALG_LOG_I,c)
+#endif
+
+#ifndef VALG_LOG_WRITE_2
+#define VALG_LOG_WRITE_2(c,n) LOGCN(VALG_LOG_I,c,n)
+#endif
+
 #ifndef LOG_BREAK
 #define LOG_BREAK(l) LOGC(l,"")
 #endif
 
+#ifndef VALG_SIZE
+#define VALG_SIZE 20
+#endif
+
+#ifndef CALLOC 
+#define CALLOC(num,size,name) new_calloc(num,size,name)
+#endif
 
 
 struct {
@@ -169,6 +188,9 @@ struct calloc_log{
 	char* name;
 };
 
+
+
+
 #include <unistd.h>
 #include <stdio.h>
 
@@ -179,7 +201,11 @@ void logs_init(void);
 
 void valgrind_init(void);
 
-void* new_calloc(size_t num, size_t size);
+void* new_calloc(size_t num, size_t size, char* name);
+
+void* add_to_valg(char* start, size_t num, size_t , char* name);
+
+void* new_memcpy(char* src, char* dest, size_t amount, char* name);
 
 void display(char * src,char *dest,size_t amount);
 

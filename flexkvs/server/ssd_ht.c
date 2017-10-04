@@ -127,7 +127,7 @@ struct {
 
 void ssd_init()
 {
-	  fd = open("output.dat",O_CREAT | O_RDWR);
+	fd = open("output.dat",O_CREAT | O_RDWR);
     ssd = mmap(0, SSD_SIZE, PROT_READ | PROT_WRITE , MAP_SHARED, fd, 0);
     if(ssd == NULL) TEST_PRINT("SSD IS NULL\n");
 	 
@@ -185,7 +185,7 @@ void ssd_ht_init(void) {
     }
 
 
-	  ssd_free_pages.page_num = 1;
+	ssd_free_pages.page_num = 1;
     swap_current_page();
 
     
@@ -200,9 +200,9 @@ struct ssd_line* ssd_ht_get( void* key, size_t keylen,uint32_t hv)
 	struct ssd_ht_entry* entry = ssd_ht + (hv % ssd_num_ht_entries);
 	
     // for testing
-  size_t full_key = *((size_t*)key);
+  	size_t full_key = *((size_t*)key);
     
-  GEN_LOG_WRITE("SSD GET START");
+  	GEN_LOG_WRITE("SSD GET START");
 	
 	struct ssd_line *current = NULL;
 	
@@ -267,7 +267,7 @@ size_t ssd_ht_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t h
 
 	RTE_LOCK(&entry->lock,"ENTRY");
 
-  size_t full_key = *((size_t*)key);
+  	size_t full_key = *((size_t*)key);
 
 		// if entry invalid, write a new one
 		if(!entry->valid)

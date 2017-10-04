@@ -1,6 +1,7 @@
 #include "global.h"
 
-
+struct calloc_log* valg;
+uint8_t valg_index = 0;
 
 void global_init()
 {
@@ -17,7 +18,7 @@ void logs_init()
 	rte_spinlock_init(&logs.lock);
 	logs.count = 0;
 	
-	char* base_names[4] = { "page_log:" , "write_out_log:" , "read_log:" , "gen_log:" };
+	char* base_names[4] = { "page_log:" , "write_out_log:" , "read_log:" , "gen_log:" , "valgrind_log"};
 	//logs.base_names = bn;
 	
 	for(int l = 0; l < NUMLOGS; l++)
@@ -37,6 +38,77 @@ void logs_init()
 	}
 	
 	PRINT("LOG INIT END");
+}
+
+void valgrind_init()
+{
+	valg = calloc(VALG_SIZE,sizeof(struct calloc_log));
+	add_to_valg(valg,VALG_SIZE,sizeof(struct calloc_log),"VALGRIND");
+}
+
+void* new_calloc(size_t num, size_t size,char* name)
+{
+
+	void* c = calloc(num,size);
+	add_to_valg(c,num,size,name);
+	return c;
+}
+
+void* add_to_valg(char* start, size_t num, size_t size,char* name)
+{
+	struct calloc_log* v = &valg[valg_index++];
+	v->start = start;
+	v->size = size;
+	v->count = num;
+	v->name = malloc(20);
+	uint8_t i = 0;
+	while(name[i] != '\0')
+	{
+		v->name[i] = name[i];
+	}
+
+	v->name[i] = name[i];
+
+}
+
+void* new_memcpy(char* src, char* dest, size_t amount, char* name)
+{
+	bool found = 0;
+	for(int i = 0; i < valg_index; i++)
+	{
+		struct calloc_log* v = &valg[i];
+		if(dest >= v->start && dest <= (v->start + (v->count*v->size) ) )
+		{
+			found = 1;
+			int j = (dest - v->start)/v->size;
+			//if it passes over a boundary we have problems
+			if(v->start + j*v->size < (dest + amount))
+			{
+				VALG_LOG_WRITE(name);
+				VALG_LOG_WRITE("WROTE OVER BOUNDS");
+				VALG_LOG_WRITE_2(name,(size_t)dest);
+				VALG_LOG_WRITE_2(name,amount);
+				VALG_LOG_WRITE_2(name,j);
+				VALG_LOG_WRITE_2(name,v->size);
+				VALG_LOG_WRITE_2(name,(size_t)((dest + amount) - (v->start + j*v->size))  );
+				LOG_BREAK(VALG_LOG_I);
+			}
+
+			break;
+		}
+	}
+
+	if(!found)
+	{
+		VALG_LOG_WRITE(name);
+		VALG_LOG_WRITE("WRITE OUT OF BOUNDS");
+		VALG_LOG_WRITE_2(name,(size_t)dest);
+		VALG_LOG_WRITE_2(name,amount);
+		LOG_BREAK(VALG_LOG_I);
+	}
+
+
+	memcpy(src,dest,amount);
 }
 
 void display(char * src,char *dest,size_t amount)
