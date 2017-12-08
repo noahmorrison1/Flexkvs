@@ -72,26 +72,26 @@
 #endif
 
 #ifndef LOCK_TEST
-#define LOCK_TEST false
+#define LOCK_TEST true
 #endif
 
 #ifndef NOHTLOCKS
-#define RTE_LOCK(l,c) rte_spinlock_lock(l); if(LOCK_TEST) printf("LOCK AT %s  :: %d \n",c,rte_lcore_id());
+#define RTE_LOCK(l,c) rte_spinlock_lock(l); if(LOCK_TEST) LOCK_LOG_WRITE("LOCK AT :",c);
 #else
 #define RTE_LOCK(l,c) 
 #endif
 
 
 #ifndef NOHTLOCKS
-#define RTE_UNLOCK(l,c) rte_spinlock_unlock(l); if(LOCK_TEST) printf("UNLOCK AT %s  :: %d \n",c,rte_lcore_id());
+#define RTE_UNLOCK(l,c) rte_spinlock_unlock(l); if(LOCK_TEST) LOCK_LOG_WRITE("UNLOCK AT: ",c);
 #else
 #define RTE_UNLOCK(l,c) 
 #endif
 
 #ifndef NOHTLOCKS
-#define RTE_TRYLOCK(l,c) rte_spinlock_trylock(l); if(LOCK_TEST) printf("TRYLOCK AT %s :: %d\n",c,rte_lcore_id());
+#define RTE_TRYLOCK(l,c) rte_spinlock_trylock(l); if(LOCK_TEST) LOCK_LOG_WRITE("TRYLOCK AT: ",c);
 #else
-#define RTE_TRYLOCK(l,c) 
+#define RTE_TRYLOCK(l,c) true;
 #endif
 
 
@@ -103,25 +103,34 @@
 //if(TESTING_FINAL) printf("Writing From BUFFER: %lu  to  SSD Page: %lu  :: %d \n",(char*)src - (char*)pages, ((char*)dest - (char*)ssd)/4096,rte_lcore_id() );
 #endif
 
+#ifndef MEMCPY
+#define MEMCPY(dest,src,amount,name) new_memcpy(dest,src,amount,name)
+#endif
+
 #ifndef PRINT
 #define PRINT(c) printf("%s \n",c)
 #endif
 
 
 #ifndef LOG
-#define LOG(l,n) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); RTE_UNLOCK(&logs.lock,"LOGS"); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOG(l,n) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef LOGC
-#define LOGC(l,c) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); RTE_UNLOCK(&logs.lock,"LOGS"); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOGC(l,c) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef LOGCN
-#define LOGCN(l,c,n) RTE_LOCK(&logs.lock,"LOGS"); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s %lu :: %d \n",c,n,logs.count); RTE_UNLOCK(&logs.lock,"LOGS"); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOGCN(l,c,n) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s %lu :: %d \n",c,n,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
+#endif
+
+
+#ifndef LOGCC
+#define LOGCC(l,c1,c2) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s  %s:: %d \n",c1,c2,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef NUMLOGS
-#define NUMLOGS 4
+#define NUMLOGS 7
 #endif
 
 #ifndef PAGE_LOG_I
@@ -142,7 +151,21 @@
 #endif
 
 #ifndef VALG_LOG_I
-#define VALG_LOG_I 3
+#define VALG_LOG_I 4
+#endif
+
+#ifndef RAM_GEN_LOG_I
+#define RAM_GEN_LOG_I 5
+#endif
+
+
+#ifndef LOCK_LOG_I
+#define LOCK_LOG_I 6
+#endif
+
+
+#ifndef LOCK_LOG_WRITE
+#define LOCK_LOG_WRITE(c1,c2) LOGCC(LOCK_LOG_I,c1,c2)
 #endif
 
 #ifndef GEN_LOG_WRITE
@@ -151,6 +174,15 @@
 
 #ifndef GEN_LOG_WRITE_2
 #define GEN_LOG_WRITE_2(c,n) LOGCN(GEN_LOG_I,c,n)
+#endif
+
+
+#ifndef RAM_GEN_LOG_WRITE
+#define RAM_GEN_LOG_WRITE(c) LOGC(RAM_GEN_LOG_I,c)
+#endif
+
+#ifndef RAM_GEN_LOG_WRITE_2
+#define RAM_GEN_LOG_WRITE_2(c,n) LOGCN(RAM_GEN_LOG_I,c,n)
 #endif
 
 #ifndef VALG_LOG_WRITE
@@ -205,7 +237,7 @@ void* new_calloc(size_t num, size_t size, char* name);
 
 void* add_to_valg(char* start, size_t num, size_t , char* name);
 
-void* new_memcpy(char* src, char* dest, size_t amount, char* name);
+void* new_memcpy(char* dest, char* src, size_t amount, char* name);
 
 void display(char * src,char *dest,size_t amount);
 

@@ -724,7 +724,7 @@ int main(int argc, char *argv[])
     argv += n;
     settings_init(argc - n, argv + n);
 
-		global_init();
+	global_init();
     database_init();
     printf("Initailizing networking\n");
     rte_mempool_ops_init();

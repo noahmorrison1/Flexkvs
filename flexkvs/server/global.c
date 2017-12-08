@@ -7,6 +7,7 @@ void global_init()
 {
 	
 	logs_init();
+	valgrind_init();
 	return;
 }
 
@@ -18,7 +19,7 @@ void logs_init()
 	rte_spinlock_init(&logs.lock);
 	logs.count = 0;
 	
-	char* base_names[4] = { "page_log:" , "write_out_log:" , "read_log:" , "gen_log:" , "valgrind_log"};
+	char* base_names[NUMLOGS] = { "page_log:" , "write_out_log:" , "read_log:" , "gen_log:" , "valgrind_log:", "ram_gen_log:","lock_log:"};
 	//logs.base_names = bn;
 	
 	for(int l = 0; l < NUMLOGS; l++)
@@ -42,8 +43,10 @@ void logs_init()
 
 void valgrind_init()
 {
+	PRINT("VALG INIT START");
 	valg = calloc(VALG_SIZE,sizeof(struct calloc_log));
 	add_to_valg(valg,VALG_SIZE,sizeof(struct calloc_log),"VALGRIND");
+	PRINT("VALG INIT END");
 }
 
 void* new_calloc(size_t num, size_t size,char* name)
@@ -65,14 +68,16 @@ void* add_to_valg(char* start, size_t num, size_t size,char* name)
 	while(name[i] != '\0')
 	{
 		v->name[i] = name[i];
+		i++;
 	}
 
 	v->name[i] = name[i];
 
 }
 
-void* new_memcpy(char* src, char* dest, size_t amount, char* name)
+void* new_memcpy(char* dest, char* src, size_t amount, char* name)
 {
+	//GEN_LOG_WRITE("STARTING NEW MEMCPY ");
 	bool found = 0;
 	for(int i = 0; i < valg_index; i++)
 	{
@@ -82,15 +87,16 @@ void* new_memcpy(char* src, char* dest, size_t amount, char* name)
 			found = 1;
 			int j = (dest - v->start)/v->size;
 			//if it passes over a boundary we have problems
-			if(v->start + j*v->size < (dest + amount))
+			if(v->start + (j+1)*v->size < (dest + amount))
 			{
-				VALG_LOG_WRITE(name);
+				VALG_LOG_WRITE(v->name);
 				VALG_LOG_WRITE("WROTE OVER BOUNDS");
-				VALG_LOG_WRITE_2(name,(size_t)dest);
-				VALG_LOG_WRITE_2(name,amount);
-				VALG_LOG_WRITE_2(name,j);
-				VALG_LOG_WRITE_2(name,v->size);
-				VALG_LOG_WRITE_2(name,(size_t)((dest + amount) - (v->start + j*v->size))  );
+				VALG_LOG_WRITE_2(v->name,(size_t)dest);
+				VALG_LOG_WRITE_2(v->name,(size_t)v->start);
+				VALG_LOG_WRITE_2(v->name,amount);
+				VALG_LOG_WRITE_2(v->name,j);
+				VALG_LOG_WRITE_2(v->name,v->size);
+				VALG_LOG_WRITE_2(v->name,(size_t)((dest + amount) - (v->start + (j+1)*v->size))  );
 				LOG_BREAK(VALG_LOG_I);
 			}
 
@@ -101,14 +107,16 @@ void* new_memcpy(char* src, char* dest, size_t amount, char* name)
 	if(!found)
 	{
 		VALG_LOG_WRITE(name);
-		VALG_LOG_WRITE("WRITE OUT OF BOUNDS");
+		VALG_LOG_WRITE("WRITE OUT OF BOUNDS, NOT FOUND");
 		VALG_LOG_WRITE_2(name,(size_t)dest);
 		VALG_LOG_WRITE_2(name,amount);
 		LOG_BREAK(VALG_LOG_I);
 	}
 
 
-	memcpy(src,dest,amount);
+	memcpy(dest,src,amount);
+
+	//GEN_LOG_WRITE("ENDING NEW MEMCPY ");
 }
 
 void display(char * src,char *dest,size_t amount)
@@ -128,7 +136,7 @@ void display(char * src,char *dest,size_t amount)
 			if(s != d)
 			{
 				count++;
-				if(count < 50) printf("SRC: %d  DEST: %d I: %d   PAGE :: %d    Key :: %lu    ID :: %d \n",s,d,i % 4096,i/4096,key,rte_lcore_id());
+				if(count % 1024 == 0) printf("SRC: %d  DEST: %d I: %d   PAGE :: %d    Key :: %lu    ID :: %d \n",s,d,i % 4096,i/4096,key,rte_lcore_id());
 			}
 			i++;
 		}

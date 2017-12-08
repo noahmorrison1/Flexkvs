@@ -63,6 +63,17 @@
 #define TABLESZ(p,s) (1ULL << (p))
 #endif 
 
+#ifndef NON_STATE
+#define NON_STATE '-'
+#endif 
+
+#ifndef WRITE_STATE
+#define WRITE_STATE 'w'
+#endif  
+
+#ifndef READ_STATE
+#define READ_STATE 'r'
+#endif  
 //static_assert(sizeof(rte_spinlock_t) == 4, "Bad spinlock size");
 
 
@@ -79,6 +90,10 @@ struct cache_item {
 
 	// whether this item is still valid
 	bool valid;
+
+	char state;
+	rte_spinlock_t state_lock;
+	uint8_t readers;
 	/** Next and prev item in the hash chain. */
 	struct cache_item *next;	
 	struct cache_item *prev;
@@ -120,6 +135,7 @@ typedef struct fragment frag_t;
 struct ht_entry {
 	struct cache_item *it;
 	rte_spinlock_t lock;
+	rte_spinlock_t barrier;
 	bool valid;
 };
 

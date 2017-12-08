@@ -61,13 +61,19 @@ bool ssd_compare(test_item* t_it,struct ssd_line* it)
 		printf("DIFF LENGTHS \n");
 		return false;
 	}
-    printf("Val 1:  %lu  Val 2: %lu   :: %d\n",*(size_t*)it->val ,*(size_t*)t_it->val,rte_lcore_id());
+    //printf("Val 1:  %lu  Val 2: %lu   :: %d\n",*(size_t*)it->val ,*(size_t*)t_it->val,rte_lcore_id());
 	return  __builtin_memcmp(it->key,t_it->key, t_it->keylen + t_it->vallen) == 0;
 }
 
 void ssd_test_init()
 {
-	ssd_test6();
+	//ssd_test1();
+	//ssd_test2();
+	//ssd_test3();
+	//ssd_test4();
+	ssd_test5();
+	//ssd_test6();
+	//ssd_test8();
 }
 
 //single put
@@ -129,14 +135,14 @@ void ssd_test3()
 	for(int i = 0; i < n ; i++)
 	{
 
-		printf("ITEM: %d \n",i);
+		//printf("ITEM: %d \n",i);
 		ssd_test_put(items[i]);
 	}
 	
 
 	for(int i = 0; i < n ; i++)
 	{
-		printf("ITEM: %d \n",i);
+		//printf("ITEM: %d \n",i);
 		struct ssd_line* c_it = ssd_test_get(items[i]);
 		ssd_test_compare_if_wrong(c,items[i],c_it,i);
 		free(items[i]);
@@ -185,7 +191,7 @@ void ssd_test5()
 	printf("TEST 5 STARTING\n");
 
 	size_t total = 1* (1ULL << 30);
-	int n = 1000; 
+	int n = 200; //10000 
 	size_t size = total / n;
 
 	test_item** items = gen_n__reg_items(size, n);
@@ -195,6 +201,8 @@ void ssd_test5()
 
 		printf("ITEM: %d \n",i);
 		ssd_test_put(items[i]);
+		struct ssd_line* c_it = ssd_test_get(items[i]);
+		ssd_test_compare_if_wrong(c,items[i],c_it,i);
 	}
 	
 
@@ -217,7 +225,7 @@ void ssd_test6()
     char * c = "TEST 6 ";
     printf("TEST 6 START \n");
     srand(10);
-    int n = 10000;
+    int n = 1000;
     test_item** items = calloc(n,sizeof(test_item*));
     int maxsize = 4096*10;//(1ULL << 30) / 100;
     int num_opts = 1; 
@@ -234,22 +242,22 @@ void ssd_test6()
         //TEST_PRINT_IF(SSD_COND7," ENTER SWITCH \n");
         if( i < 100) opt = 0;
         
-        if(i % 1 == 0) printf("I: %d   OPT: %d   :: %d\n",i,opt,rte_lcore_id());
+        if(i % 50 == 0) printf("I: %d   OPT: %d   :: %d\n",i,opt,rte_lcore_id());
         switch(opt){
             case  0 : ;            // generate an item and check for it
-										GEN_LOG_WRITE("TEST PUTTING START");
+					GEN_LOG_WRITE("TEST PUTTING START");
                     size = (rand() % maxsize) + sizeof(size_t);
                     items[num] = gen_reg_item(size);
-                    printf("PUTTING ITEM: %lu  :: %d \n",*((size_t*)(items[num]->key)),rte_lcore_id() );
+                    //printf("PUTTING ITEM: %lu  :: %d \n",*((size_t*)(items[num]->key)),rte_lcore_id() );
 
                     ssd_test_put(items[num]);
-										GEN_LOG_WRITE("TEST PUT SUCCESSFUL, GETTING");
+					GEN_LOG_WRITE("TEST PUT SUCCESSFUL, GETTING");
                     c_it = ssd_test_get(items[num]);
-										GEN_LOG_WRITE("TEST GETTING SUCCESSFUL, COMPARING");
+					GEN_LOG_WRITE("TEST GETTING SUCCESSFUL, COMPARING");
                     ssd_test_compare_if_wrong(c,items[num],c_it,i);
-										GEN_LOG_WRITE("TEST COMPARING SUCESSFUL");
+					GEN_LOG_WRITE("TEST COMPARING SUCESSFUL");
                     num++;
-										GEN_LOG_WRITE("TEST PUTTING END");
+					GEN_LOG_WRITE("TEST PUTTING END");
                     break;
             // search for a random item
             case 1 : ;
@@ -330,9 +338,9 @@ void ssd_test8()
 
     for(int i = 0; i < n ; i++)
     {
-        /*printf("ITEM: %d \n",i);
+        printf("ITEM: %d \n",i);
         struct ssd_line* c_it = ssd_test_get(items[i]);
-        ssd_test_compare_if_wrong(c,items[i],c_it,i);*/
+        ssd_test_compare_if_wrong(c,items[i],c_it,i);
         free(items[i]);
     }
 

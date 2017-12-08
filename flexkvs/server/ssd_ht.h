@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #ifndef SSD_HT_H_
 #define SSD_HT_H_
 

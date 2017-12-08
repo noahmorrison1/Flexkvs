@@ -1,0 +1,1 @@
+This Code is the code for the SSD Backend of the Key-Value store I am builindg. It is designed to deal with any size of both keys and values. 

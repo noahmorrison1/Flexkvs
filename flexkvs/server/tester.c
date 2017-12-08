@@ -18,22 +18,38 @@ rte_spinlock_t test_lock;
 /** Generates a item with the key as the current key_num and the value of the given size **/
 test_item* gen_reg_item(size_t vallen)
 {
+	GEN_LOG_WRITE("GEN REG ITEM START");
 	//item is header + key_num + value
 	test_item* t_it = calloc(sizeof(test_item) + vallen + sizeof(size_t),1);
-	
+	GEN_LOG_WRITE_2("ITEM IS : ",(size_t)t_it);
+
+	GEN_LOG_WRITE("GEN REG ITEM START 1");
 	rte_spinlock_lock(&test_lock);
 	t_it->id = key_num++;
 	rte_spinlock_unlock(&test_lock);
 	
+	GEN_LOG_WRITE("GEN REG ITEM START 2");
+
 	size_t* key = (size_t *)(t_it + 1);
 	t_it->key =  key;
 	*key = t_it->id;
 	size_t* val = key + 1;
+
+	GEN_LOG_WRITE("GEN REG ITEM START 3");
+
 	*val = t_it->id;
 	t_it->val = val;
 	t_it->vallen = vallen;
 	t_it->keylen = sizeof(size_t);
+
+	GEN_LOG_WRITE("GEN REG ITEM START 4");
+
 	write_ones(t_it->val,vallen);
+
+
+
+	GEN_LOG_WRITE("GEN REG ITEM END");
+
 	return t_it;
 }
 
