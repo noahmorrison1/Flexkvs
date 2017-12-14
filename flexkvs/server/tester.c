@@ -160,9 +160,9 @@ void test_init()
 {
   rte_spinlock_init(&test_lock);
 	//cache_test_init();
-	ssd_test_init();
+	//ssd_test_init();
 	//database_test_init();
-	
+	NVDIMM_test_init();
 	//database_test_init();
 }
 

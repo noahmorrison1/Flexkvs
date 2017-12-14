@@ -29,5 +29,6 @@ void database_init()
 	TEST_PRINT("DATABASE INITIALIZING \n");
 	ssd_ht_init();
 	cache_init();
+	NVDIMM_init();
 	TEST_PRINT("DATABASE INITIALIZING DONE\n");
 }

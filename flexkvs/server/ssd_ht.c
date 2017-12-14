@@ -1032,21 +1032,28 @@ inline void buff_too_close()
 
 void* get_new_page(int num)
 {
-		GEN_LOG_WRITE("SSD GET NEW PAGE START");
+	GEN_LOG_WRITE("SSD GET NEW PAGE START");
 	
 
     RTE_LOCK(&page_buffer.lock,"PAGE_BUFFER 1");
 
-    struct page* p = &(page_buffer.pages[page_buffer.tail]);
+    struct page* p = NULL;
+    struct free_page_header* header = NULL;
 
     //circular buffer
-    page_buffer.tail = page_buffer.tail >= page_buf_size - 1 ? 0 : page_buffer.tail + 1;
+    do 
+    {
+    	p = &(page_buffer.pages[page_buffer.tail]);
+    	header = (struct free_page_header*)p;
+    	page_buffer.tail = page_buffer.tail >= page_buf_size - 1 ? 0 : page_buffer.tail + 1;
+	}
+	while(header->written_out == false);
     //once popped off page, release page buffer lock
 
     RTE_UNLOCK(&page_buffer.lock,"PAGE_BUFFER 1");
     
 
-    struct free_page_header* header = (struct free_page_header*)p;
+    //struct free_page_header* header = (struct free_page_header*)p;
     //capacity not currently used
     header->capacity = SSD_PAGE_SIZE;
     header->num = num;
@@ -1055,14 +1062,14 @@ void* get_new_page(int num)
     header->writers = 0;
     header->consumed = false;
 	
-		//testing
-		if(num == 0)
-		{
-			GEN_LOG_WRITE("GNP:NEW PAGE NUM IS 0");
-			exit(0);
-		}
+	//testing
+	if(num == 0)
+	{
+		GEN_LOG_WRITE("GNP:NEW PAGE NUM IS 0");
+		exit(0);
+	}
 	
-		GEN_LOG_WRITE("SSD GET NEW PAGE END");
+	GEN_LOG_WRITE("SSD GET NEW PAGE END");
 	
     return (void*)(p);
 }

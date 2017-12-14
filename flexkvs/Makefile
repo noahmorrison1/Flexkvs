@@ -1,4 +1,4 @@
-FLEXKVS_FILES=hashtable.o ialloc.o jenkins_hash.o main.o settings.o global.o cache_tester.o database.o database_tester.o ram_ht.o ssd_ht.o ssd_tester.o tester.o
+FLEXKVS_FILES=hashtable.o ialloc.o jenkins_hash.o main.o settings.o global.o cache_tester.o database.o database_tester.o ram_ht.o ssd_ht.o NVDIMM.o ssd_tester.o NVDIMM_tester.o tester.o
 BENCH_FILES=main.o rng.o commandline.o
 
 CFLAGS = -std=gnu99 -g -w -Icommon/include -O3 -march=native
