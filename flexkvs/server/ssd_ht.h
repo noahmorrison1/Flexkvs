@@ -134,7 +134,7 @@ struct ssd_line {
 	void* val;
 	size_t vallen;
 	size_t keylen;
-	size_t version;
+	int64_t version;
 };
 
 

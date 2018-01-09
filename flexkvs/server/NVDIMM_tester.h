@@ -41,7 +41,14 @@ void NVDIMM_test5(void);
 
 void NVDIMM_test6(void);
 
+void NVDIMM_test7(void);
+
 void NVDIMM_test8(void);
+
+void NVDIMM_test_multi(void);
+
+void NVDIMM_test_multi_2(void);
+
 
 
 

@@ -136,7 +136,7 @@ void display(char * src,char *dest,size_t amount)
 			if(s != d)
 			{
 				count++;
-				if(count % 1024 == 0) printf("SRC: %d  DEST: %d I: %d   PAGE :: %d    Key :: %lu    ID :: %d \n",s,d,i % 4096,i/4096,key,rte_lcore_id());
+				if(count % 1 == 0) printf("SRC: %d  DEST: %d I: %d   PAGE :: %d    Key :: %lu    ID :: %d \n",s,d,i % 4096,i/4096,key,rte_lcore_id());
 			}
 			i++;
 		}

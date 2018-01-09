@@ -165,7 +165,10 @@ void cache_hasht_prefetch2(uint32_t hv);
 
 
 /**  Looks for the key in the cache, if its finds it, returns the item , otherwise null_ptr **/
-struct cache_item* cache_ht_get(const void *key, size_t keylen, uint32_t hv);
+struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv);
+
+
+struct ssd_line* cache_item_to_line(struct cache_item* it);
 
 
 void cache_ht_set(void *key, size_t keylen, void* val, size_t vallen, uint32_t hv,size_t version);
@@ -232,6 +235,8 @@ The version is used to make sure only most recent SSD writer, overwrites this ke
 void overwrite(struct cache_item* it, void* val, size_t vallen, size_t verison);
 
 
+/** Flushes the specific key from the cache**/
+void flush(void* key, size_t keylen,size_t hv);
 
 
 

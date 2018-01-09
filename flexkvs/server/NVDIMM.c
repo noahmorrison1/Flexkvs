@@ -16,17 +16,25 @@ struct {
 
 static char* buf_end;
 
-void NVDIMM_init(void)
+void NVDIMM_init()
 {
-	TEST_PRINT("NVDIMM INITIALIZING");
-	circ_buffer.capacity = NVDIMM_SIZE;
+	TEST_PRINT("NVDIMM INITIALIZING\n");
+	circ_buffer.capacity = NVDIMM_SIZE ;
 	rte_spinlock_init(&circ_buffer.lock);
-	circ_buffer.buffer = calloc(NVDIMM_SIZE,1);
+	circ_buffer.buffer = CALLOC(1,NVDIMM_SIZE + 4098,"NVDIMM");
 	circ_buffer.head = circ_buffer.buffer;
 	circ_buffer.tail = circ_buffer.head;
 	circ_buffer.next = circ_buffer.head;
-	buf_end = &circ_buffer.buffer[NVDIMM_SIZE -1];
-	TEST_PRINT("NVDIMM INITIALIZING END");
+	buf_end = (circ_buffer.buffer + NVDIMM_SIZE );
+
+
+
+	TEST_PRINT_2("BUFFER START: ",(size_t)circ_buffer.buffer);
+	TEST_PRINT_2("BUFFER END: ",(size_t)buf_end);
+	TEST_PRINT_2("BUFFER END 2: ",(size_t)(&(circ_buffer.buffer[NVDIMM_SIZE ])) );
+	//uint8_t* end = buf_end;
+	//*end = 0;
+	TEST_PRINT("NVDIMM INITIALIZING END\n");
 
 }
 
@@ -46,7 +54,6 @@ inline void change_state(nv_line* item, uint8_t new_state)
 	item->state = item->state | new_state;
 	RTE_UNLOCK(&item->lock,"NVDIMM ITEM LOCK");
 
-	//GEN_LOG_WRITE_2("STATE: ",(size_t)item->state);
 
 }
 
@@ -75,7 +82,6 @@ inline void change_and_remove_state(nv_line* item, uint8_t new_state,uint8_t old
 	RTE_UNLOCK(&item->lock,"NVDIMM ITEM LOCK");
 
 
-	//GEN_LOG_WRITE_2("STATE: ",(size_t)item->state);
 
 }
 
@@ -97,51 +103,50 @@ inline void remove_state(nv_line* item, uint8_t old_state)
 	}
 	RTE_UNLOCK(&item->lock,"NVDIMM ITEM LOCK");
 
-
-	//GEN_LOG_WRITE_2(" STATE: ",(size_t)item->state);
-
 }
 
-inline bool contains_state(nv_line* item,uint8_t state)
+bool contains_state(nv_line* item,uint8_t state)
 {
-	return item->state & state == state;
+	return (item->state & state) == state;
 }
 
 
 // is empty state means that this item has been written out to SSD 
 // and should not be read more
-inline bool NVDIMM_is_empty_state(nv_line* item)
+bool NVDIMM_is_empty_state(nv_line* item)
 {
-	GEN_LOG_WRITE_2("ITEM STATE: ", (size_t)item->state);
-	GEN_LOG_WRITE_2("IS EMPTY: ", (size_t)(item->state == NVD_EMPTY));
-	GEN_LOG_WRITE_2("CONSUMED: ", (size_t)(contains_state(item,NVD_CONSUMED)));
-
-
-
 	return (item->state == NVD_EMPTY || contains_state(item,NVD_CONSUMED));
 }
 
-inline bool NVDIMM_is_evictable_state(nv_line* item)
+bool NVDIMM_is_evictable_state(nv_line* item)
 {
 	return (item->state == NVD_EMPTY || item->state == NVD_CONSUMED);
 }
 
 //Whether the item is inside the buffer
-inline bool NVDIMM_item_is_between_head_and_tail(nv_line* item)
+bool NVDIMM_item_is_between_head_and_tail(nv_line* item)
 {
 	 char* dest = (char*)item;
 	 bool forwards = (circ_buffer.tail > circ_buffer.head) && (dest < circ_buffer.tail) ;
 	 bool backwards = circ_buffer.tail < circ_buffer.head;
 	 bool behind =  dest < circ_buffer.tail;
-	 bool ahead = dest > circ_buffer.head;
+	 bool ahead = dest >= circ_buffer.head;
 
 	 bool fits_in_backwards = backwards && ( behind || ahead);
+
+	/*GEN_LOG_WRITE_2("IS BETWEEN HEAD AND TAIL: ",(size_t)(forwards || fits_in_backwards));
+
+	 GEN_LOG_WRITE_2("HEAD: ",circ_buffer.head - circ_buffer.buffer);
+	 GEN_LOG_WRITE_2("TAIL: ",circ_buffer.tail - circ_buffer.buffer);
+	 GEN_LOG_WRITE_2("THIS: ",dest- circ_buffer.buffer); 
+	 GEN_LOG_WRITE_2("CAPACITY: ",circ_buffer.capacity);*/
+
 
 	 return forwards || fits_in_backwards;
 }
 
 
-inline bool NVDIMM_compare_key(void* key, size_t keylen, nv_line* item)
+bool NVDIMM_compare_key(void* key, size_t keylen, nv_line* item)
 {
 
 	char* dest = (char*)(item + 1);
@@ -172,16 +177,21 @@ inline bool NVDIMM_compare_key(void* key, size_t keylen, nv_line* item)
 bool NVDIMM_write_entry(void* key, size_t keylen, void* val, size_t vallen, size_t hv)
 {
 
+	GEN_LOG_WRITE_2("WE HASH VALUE: ",hv);
+
 	GEN_LOG_WRITE("NVDIMM WRITE ENTRY START");
 
 	size_t totsize = sizeof(nv_line)+ keylen + vallen;
+
+	GEN_LOG_WRITE_2("TOTSIZE: ",totsize);
 	if(totsize > NVDIMM_SIZE) return false;
 
 	//find will put item in read state so it 
 	// will not be inavlidated by another call to invalidate
 	nv_line* old = NVDIMM_find(key,keylen,hv);
 	if(old != NULL) {
-		change_and_remove_state(old,NVD_READING,NVD_CONSUMED);
+		change_and_remove_state(old,NVD_CONSUMED, NVD_WAITING);
+		remove_state(old,NVD_READING);
 		NVDIMM_invalidate();
 	}
 
@@ -207,7 +217,11 @@ bool NVDIMM_write_entry(void* key, size_t keylen, void* val, size_t vallen, size
 	dest = NVDIMM_write_to(val,dest,vallen);
 	change_and_remove_state(item,NVD_WAITING,NVD_WRITING_VAL);
 
+
+	GEN_LOG_WRITE_2("LOCK STATE: ",rte_spinlock_is_locked(&item->lock));
+
 	GEN_LOG_WRITE("NVDIMM WRITE ENTRY END");
+
 
 	return true;
 
@@ -225,14 +239,43 @@ void* NVDIMM_write_to(char* src, char* dest, size_t amount)
 	//if we need to wrap over, write here first
 	if(rest < amount)
 	{
-		memcpy(dest,src,rest);
+		MEMCPY(dest,src,rest,"NVDIMM WRITE TO");
+		GEN_LOG_WRITE("WRAPPING AROUND");
 		amount -= rest;
 		dest = circ_buffer.buffer;
 		src += rest;
 		rest = amount;
+		if(dest < circ_buffer.head && dest + rest >= circ_buffer.head)
+		{
+			GEN_LOG_WRITE_2("HEAD: ",circ_buffer.head - circ_buffer.buffer);
+			GEN_LOG_WRITE_2("NEXT: ",circ_buffer.next - circ_buffer.buffer);
+			GEN_LOG_WRITE_2("TAIL: ",circ_buffer.tail - circ_buffer.buffer);
+			GEN_LOG_WRITE_2("START: ",dest - circ_buffer.buffer);
+			GEN_LOG_WRITE_2("END: ",(dest + amount) - circ_buffer.buffer);
+			exit(0);
+		}
 	}
 
-	memcpy(dest,src,amount);
+	/*GEN_LOG_WRITE_2("HEAD: ",circ_buffer.head - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("NEXT: ",circ_buffer.next - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("TAIL: ",circ_buffer.tail - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("START: ",dest - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("END: ",(dest + amount) - circ_buffer.buffer);*/
+
+	if( dest < circ_buffer.head && dest + amount >= circ_buffer.head)
+	{
+		GEN_LOG_WRITE_2("HEAD: ",circ_buffer.head - circ_buffer.buffer);
+		GEN_LOG_WRITE_2("NEXT: ",circ_buffer.next - circ_buffer.buffer);
+		GEN_LOG_WRITE_2("TAIL: ",circ_buffer.tail - circ_buffer.buffer);
+		GEN_LOG_WRITE_2("START: ",dest - circ_buffer.buffer);
+		GEN_LOG_WRITE_2("END: ",(dest + amount) - circ_buffer.buffer);
+		exit(0);
+	}
+
+
+
+
+	MEMCPY(dest,src,amount,"NVDIMM WRITE TO 2");
 
 	GEN_LOG_WRITE("NVDIMM WRITE TO END");
 
@@ -244,7 +287,24 @@ void* NVDIMM_write_to(char* src, char* dest, size_t amount)
 
 nv_line* NVDIMM_allocate(size_t amount)
 {
+
+
+
 	GEN_LOG_WRITE("NVDIMM ALLOCATE START");
+
+
+	/*GEN_LOG_WRITE_2("HEAD: ",circ_buffer.head - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("NEXT: ",circ_buffer.next - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("TAIL: ",circ_buffer.tail - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("CAPACITY: ",circ_buffer.capacity);
+	GEN_LOG_WRITE_2("AMOUNT: ",amount);*/
+
+	size_t cap = circ_buffer.capacity;
+
+	///GEN_LOG_WRITE_2("START: ",dest - circ_buffer.buffer);
+	//GEN_LOG_WRITE_2("END: ",(dest + amount) - circ_buffer.buffer);
+
+	char* first_tail = circ_buffer.tail;
 
 	nv_line* item = NULL;
 	RTE_LOCK(&circ_buffer.lock,"CIRC BUFFER");
@@ -252,8 +312,10 @@ nv_line* NVDIMM_allocate(size_t amount)
 
 	size_t rest = (size_t)(buf_end - circ_buffer.tail);
 
-	if(circ_buffer.capacity < amount ||  (   rest < sizeof(nv_line) && (circ_buffer.capacity - rest) < amount )   ) 
+	//return null if we dont have enough space
+	if(circ_buffer.capacity <= amount ||  (   rest <= sizeof(nv_line) && (circ_buffer.capacity - rest) <= amount )   ) 
 	{ 
+		GEN_LOG_WRITE("QUITTING EARLY");
 		RTE_UNLOCK(&circ_buffer.lock,"CIRC BUFFER");
 		return NULL;
 	}
@@ -261,13 +323,15 @@ nv_line* NVDIMM_allocate(size_t amount)
 	char* dest = circ_buffer.tail;
 
 	//first write out the nv_line
-	if(rest < sizeof(nv_line))
+	//we know if were here we have enough capacity
+	if(rest >= sizeof(nv_line))
 	{
 		item = (nv_line*) circ_buffer.tail;
 	}
 	else
 	{
-		circ_buffer.capacity = rest;
+		GEN_LOG_WRITE("WRAPPING AROUND 1");
+		circ_buffer.capacity -= rest;
 		dest = circ_buffer.buffer;
 		item = (nv_line*)dest;	
 		rest = amount;
@@ -276,9 +340,10 @@ nv_line* NVDIMM_allocate(size_t amount)
 
 	item->readers = 0;
 	item->state = NVD_WRITING_KEY;
-	GEN_LOG_WRITE_2("ORIGINAL STATE: ",(size_t)item->state);
+	//GEN_LOG_WRITE_2("ORIGINAL STATE: ",(size_t)item->state);
 	rte_spinlock_init(&item->lock);
 	amount -= sizeof(nv_line);
+	circ_buffer.capacity -= sizeof(nv_line);
 	dest += sizeof(nv_line);
 	rest -= sizeof(nv_line);
 	
@@ -286,10 +351,10 @@ nv_line* NVDIMM_allocate(size_t amount)
 	//allocate memory at the end of the buffer
 	if(rest < amount )
 	{
+		GEN_LOG_WRITE("WRAPPING AROUND 2");
 		amount -= rest;
 		circ_buffer.capacity -= rest;
-		dest = circ_buffer.buffer;
-		rest = amount;
+		dest = circ_buffer.buffer; 
 	}
 
 
@@ -300,7 +365,21 @@ nv_line* NVDIMM_allocate(size_t amount)
 
 	RTE_UNLOCK(&circ_buffer.lock,"CIRC BUFFER");
 
+
+	if(circ_buffer.tail < first_tail )
+	{
+		GEN_LOG_WRITE("WRAPPING AROUND");
+		GEN_LOG_WRITE_2("OLD TAIL: ",(first_tail - circ_buffer.buffer));
+		GEN_LOG_WRITE_2("NEW TAIL: ",(circ_buffer.tail - circ_buffer.buffer));
+		GEN_LOG_WRITE_2("END: ",(buf_end - circ_buffer.buffer));
+		GEN_LOG_WRITE_2("CAPACITY: ",(circ_buffer.capacity));
+
+
+	}
+
+	GEN_LOG_WRITE_2("LOST CAP: ",cap - circ_buffer.capacity);
 	GEN_LOG_WRITE("NVDIMM ALLOCATE END");
+
 
 
 	return item;
@@ -342,32 +421,38 @@ nv_line* NVDIMM_find(void* key, size_t keylen,size_t hv)
 {
 	GEN_LOG_WRITE("NVDIMM FIND START");
 
+	GEN_LOG_WRITE_2("FIND HASH VALUE: ",hv);
+
+
 	RTE_LOCK(&circ_buffer.lock,"NVDIMM BUFFER");
 
+	//GEN_LOG_WRITE("GOT CIRC BUFFER LOCK");
 
 	nv_line* item = (nv_line*)circ_buffer.head;
 	while( NVDIMM_item_is_between_head_and_tail(item))
 	{
-		GEN_LOG_WRITE("IS BETWEEN HEAD AND TAIL");
+		GEN_LOG_WRITE_2("ITEM HV: ",item->hv);
+		//GEN_LOG_WRITE("IS BETWEEN HEAD AND TAIL");
+		//usleep(1);
+
 		RTE_LOCK(&item->lock,"NVDIMM ITEM LOCK");
 		// if its empty or has been written out
 		// we dont return it even though it still may be here because someone else is 
 		// reading or something
-		if(!NVDIMM_is_empty_state(item)) {
-			//cant read here
+		if(!NVDIMM_is_empty_state(item)) {		//cant read here
 
-			GEN_LOG_WRITE("NOT EMPTY STATE");
+			//GEN_LOG_WRITE("NOT EMPTY STATE");
 
 			if(contains_state(item,NVD_WRITING_KEY) )
 			{
 				RTE_UNLOCK(&item->lock,"NVDIMM ITEM LOCK");
 				usleep(1);
-				RTE_LOCK(&item->lock,"NVDIMM ITEM LOCK");
+				//RTE_LOCK(&item->lock,"NVDIMM ITEM LOCK");
 				continue;
 			}
 
 
-			GEN_LOG_WRITE("ABOUT TO COMPARE");
+			//GEN_LOG_WRITE_2("ABOUT TO COMPARE HV: ",item->hv);
 
 			if(hv == item->hv && NVDIMM_compare_key(key,keylen,item))
 			{
@@ -413,6 +498,8 @@ nv_line* NVDIMM_find(void* key, size_t keylen,size_t hv)
 	}
 
 
+	GEN_LOG_WRITE("ABOUT TO FREE CIRC BUFFER");
+
 	RTE_UNLOCK(&circ_buffer.lock,"NVDIMM BUFFER");
 
 	GEN_LOG_WRITE("NVDIMM FIND END");
@@ -429,8 +516,15 @@ struct ssd_line* NVDIMM_read_item(nv_line* item)
 	GEN_LOG_WRITE("NVDIMM READ ITEM START");
 
 
+
+
+
 	size_t totsize = sizeof(struct ssd_line) + item->keylen + item->vallen;
-	struct ssd_line* line = malloc(totsize);
+
+
+	struct ssd_line* line = malloc(totsize + 100);
+
+
 
 	char* dest = (char*)(line+1);
 	line->key = dest;
@@ -439,10 +533,12 @@ struct ssd_line* NVDIMM_read_item(nv_line* item)
 	line->vallen = item->vallen;
 	line->version = -1;
 	char* src = (char*)(item+1);
+
 	size_t rest = buf_end - src;
 
 	if(rest < totsize)
 	{
+		GEN_LOG_WRITE("READ WRAPPING AROUND");
 		memcpy(dest,src,rest);
 		src = circ_buffer.buffer;
 		dest += rest;
@@ -500,15 +596,27 @@ nv_line* NVDIMM_claim_next(void)
 
 	RTE_LOCK(&next->lock,"NVDIMM ITEM LOCK");
 	/// if the next is not good 
-	while(NVDIMM_is_empty_state(next))
+	while(NVDIMM_is_empty_state(next) && NVDIMM_item_is_between_head_and_tail(next))
 	{
 		RTE_UNLOCK(&next->lock,"NVDIMM ITEM LOCK");
 		RTE_UNLOCK(&circ_buffer.lock,"CIRC BUFFER");
 
-		NVDIMM_invalidate();
+		GEN_LOG_WRITE("NEXT IS EVICTABLE STATE");
+		return NULL;
+		/*NVDIMM_invalidate();
+
+
 
 		RTE_LOCK(&circ_buffer.lock,"CIRC BUFFER");
-		RTE_LOCK(&next->lock,"NVDIMM ITEM LOCK");
+
+
+		dest = circ_buffer.next;
+		nv_line* next = (nv_line*)dest;
+
+		GEN_LOG_WRITE_2("EVICTING THE NEXT",(dest - circ_buffer.buffer));
+		GEN_LOG_WRITE_2("EVICTING NEXT 2: ",(char*)next - circ_buffer.buffer);
+
+		RTE_LOCK(&next->lock,"NVDIMM ITEM LOCK");*/
 	}
 	//if its not done being written, we gotta wait
 	if(next->state == NVD_WRITING_KEY || next->state == NVD_WRITING_VAL)
@@ -538,6 +646,9 @@ nv_line* NVDIMM_claim_next(void)
 
 	GEN_LOG_WRITE("NVDIMM CLAIM NEXT END");
 
+	GEN_LOG_WRITE_2("CLAIMING NEXT: ",(char*)next - circ_buffer.buffer);
+	GEN_LOG_WRITE_2("HEAD IS STILL: ",circ_buffer.head -  circ_buffer.buffer);
+
 	return next;
 
 }
@@ -551,9 +662,11 @@ bool NVDIMM_write_out(nv_line* item)
 	struct ssd_line* ssd_item = NVDIMM_read_item(item);
 	database_set(ssd_item->key,ssd_item->keylen,ssd_item->val,ssd_item->vallen, item->hv, 0);
 
+	GEN_LOG_WRITE("NVDIMM  WRITE OUT END");
+
+
 	return true;
 
-	GEN_LOG_WRITE("NVDIMM  WRITE OUT END");
 
 }
 
@@ -576,6 +689,7 @@ void NVDIMM_invalidate()
 
 	GEN_LOG_WRITE("NVDIMM INVALIDATE START");
 
+	size_t cap = circ_buffer.capacity;
 
 	RTE_LOCK(&circ_buffer.lock,"NVDIMM BUFFER LOCK")
 	if(circ_buffer.head == circ_buffer.tail) 
@@ -587,18 +701,28 @@ void NVDIMM_invalidate()
 	char* dest = circ_buffer.head;
 	nv_line* item = (nv_line*)dest;
 	bool past_next = false;
+	GEN_LOG_WRITE("ACTUALLY INVALIDATING");
+	GEN_LOG_WRITE_2("EVICTING: ",dest - circ_buffer.buffer);
 	RTE_LOCK(&item->lock,"NVDIMM ITEM LOCK");
+	GEN_LOG_WRITE("GOT ITEM LOCK");
+	GEN_LOG_WRITE_2("ITEM STATE: ",item->state);
 	while(NVDIMM_item_is_between_head_and_tail(item) &&  NVDIMM_is_evictable_state(item))
 	{
 
+		GEN_LOG_WRITE("ACTUALLY EVICTING");
 		if(dest == circ_buffer.next) past_next = true;
 
 		circ_buffer.capacity += sizeof(nv_line);
+
+
 		dest = (char*)(item+1);
 		size_t rest = buf_end - dest;
 		size_t totsize = item->keylen+item->vallen;
+
+
 		if(rest < totsize)
 		{
+			GEN_LOG_WRITE("INVALIDATE WRAPPING");
 			circ_buffer.capacity += rest;
 			totsize -= rest;
 			dest = circ_buffer.buffer;
@@ -610,18 +734,29 @@ void NVDIMM_invalidate()
 
 		if(rest < sizeof(nv_line))
 		{
+			GEN_LOG_WRITE_2("INVALIDATE ADDING EXTRA: ",rest);
 			dest = circ_buffer.buffer;
 			circ_buffer.capacity += rest;
 		}
 
+		RTE_UNLOCK(&item->lock,"NVDIMM ITEM LOCK");
+
 		item = (nv_line*)dest;
+
+		if(NVDIMM_item_is_between_head_and_tail(item)){
+			RTE_LOCK(&item->lock,"NVDIMM ITEM LOCK");
+		}
 	}
+
+	if(NVDIMM_item_is_between_head_and_tail(item)) RTE_UNLOCK(&item->lock,"NVDIMM ITEM LOCK");
 
 
 	circ_buffer.head = item;
 	if(past_next) circ_buffer.next = item;
 
 	RTE_UNLOCK(&circ_buffer.lock,"NVDIMM BUFFER LOCK")
+
+	GEN_LOG_WRITE_2("GAINED CAP: ", circ_buffer.capacity - cap);
 
 	GEN_LOG_WRITE("NVDIMM INVALIDATE END");
 

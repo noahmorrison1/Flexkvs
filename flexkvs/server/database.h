@@ -3,6 +3,7 @@
 
 #include "ram_cache.h"
 #include "ssd_ht.h"
+#include "NVDIMM.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

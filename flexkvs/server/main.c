@@ -731,10 +731,10 @@ int main(int argc, char *argv[])
     network_init();
     printf("Networking initialized\n");
 		
-    test_init();
+    //test_init();
 
-    //rte_eal_mp_remote_launch(test_init, NULL, SKIP_MASTER);
-    //while (n_ready < rte_lcore_count() - 1);
+    rte_eal_mp_remote_launch(test_init, NULL, SKIP_MASTER);
+    while (n_ready < rte_lcore_count() - 1);
     /*while(1)
     {
         //waiting

@@ -2,38 +2,38 @@
 #define NVDIMM_H_
 
 #ifndef NVDIMM_SIZE
-#define NVDIMM_SIZE 1 << 20
+#define NVDIMM_SIZE (1 << 20)
 #endif
 
 
 #ifndef NVD_WRITING_TO_SSD
-#define NVD_WRITING_TO_SSD 0x01
+#define NVD_WRITING_TO_SSD (uint8_t)(0x01)
 #endif
 
 
 #ifndef NVD_READING
-#define NVD_READING 0x02
+#define NVD_READING (uint8_t)(0x02)
 #endif
 
 #ifndef NVD_CONSUMED
-#define NVD_CONSUMED 0x04
+#define NVD_CONSUMED (uint8_t)(0x04)
 #endif
 
 #ifndef NVD_WRITING_KEY
-#define NVD_WRITING_KEY 0x08
+#define NVD_WRITING_KEY (uint8_t)(0x08)
 #endif
 
 #ifndef NVD_WRITING_VAL
-#define NVD_WRITING_VAL 0x10
+#define NVD_WRITING_VAL (uint8_t)(0x10)
 #endif
 
 #ifndef NVD_WAITING
-#define NVD_WAITING 0x20
+#define NVD_WAITING (uint8_t)(0x20)
 #endif
 
 
 #ifndef NVD_EMPTY
-#define NVD_EMPTY 0x00
+#define NVD_EMPTY (uint8_t)(0x00)
 #endif
 
 
@@ -58,6 +58,18 @@ struct NVDIMM_line {
 };
 
 typedef struct NVDIMM_line nv_line;
+
+
+bool contains_state(nv_line* item,uint8_t state);
+
+bool NVDIMM_is_empty_state(nv_line* item);
+
+bool NVDIMM_is_evictable_state(nv_line* item);
+
+bool NVDIMM_compare_key(void* key, size_t keylen, nv_line* item);
+
+bool NVDIMM_item_is_between_head_and_tail(nv_line* item);
+
 
 /*
 Attempts to write to the NVDIMM, if there is not enough space

@@ -57,6 +57,7 @@ bool NVDIMM_compare(test_item* t_it,struct ssd_line* it)
 	if(!(it->keylen == t_it->keylen && it->vallen == t_it->vallen)) 
 	{
 		printf("DIFF LENGTHS \n");
+		printf("IT->KEYLEN: % d  IT->VALLEN: %d  T_IT->KEYLEN: % d  T_IT->VALLEN: %d \n",it->keylen,it->vallen,t_it->keylen,t_it->vallen );
 		return false;
 	}
     //printf("Val 1:  %lu  Val 2: %lu   :: %d\n",*(size_t*)it->val ,*(size_t*)t_it->val,rte_lcore_id());
@@ -65,13 +66,16 @@ bool NVDIMM_compare(test_item* t_it,struct ssd_line* it)
 
 void NVDIMM_test_init()
 {
-	NVDIMM_test3();
+	//NVDIMM_test1();
 	//NVDIMM_test2();
 	//NVDIMM_test3();
 	//NVDIMM_test4();
 	//NVDIMM_test5();
 	//NVDIMM_test6();
+	//NVDIMM_test7();
 	//NVDIMM_test8();
+	//NVDIMM_test_multi_1();
+	//NVDIMM_test_multi_2();
 }
 
 //single put
@@ -102,23 +106,24 @@ void NVDIMM_test1()
 
 
 
-//put and read 1000 items
 void NVDIMM_test3()
 {
 	char * c = "TEST 3 ";
 	printf("TEST 3 STARTING\n");
 
-	int n = 15;
-	size_t size = NVDIMM_SIZE/20;
+	int n = 16;
+	size_t size = NVDIMM_SIZE;
+	size = size/20;
 
-	TEST_PRINT("GENNING\n");
+	//TEST_PRINT_2("GENNING: ",NVDIMM_SIZE);
+	//TEST_PRINT_2("GENNING: ",size);
 	test_item** items = gen_n__reg_items(size, n);
 
 	TEST_PRINT("PUTTING \n");
 	for(int i = 0; i < n ; i++)
 	{
 
-		//printf("ITEM: %d \n",i);
+		printf("ITEM: %d \n",i);
 		NVDIMM_test_put(items[i]);
 	}
 	
@@ -126,10 +131,12 @@ void NVDIMM_test3()
 	TEST_PRINT("GETTING\n");
 	for(int i = 0; i < n ; i++)
 	{
-		//printf("ITEM: %d \n",i);
+		printf("ITEM: %d \n",i);
+		printf("KEYLEN: %d   VALLEN: %d  \n",items[i]->keylen,items[i]->vallen);
 		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
 		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
-		//free(items[i]);
+		if(c_it != NULL) free(c_it);
+		free(items[i]);
 	}
 
 	//free(items);
@@ -140,46 +147,70 @@ void NVDIMM_test3()
 
 
 
-
-//change valsize
 void NVDIMM_test4()
 {
+	char * c = "TEST 4 ";
 	printf("TEST 4 STARTING\n");
-	char* c = "TEST 4";
-	test_item* it = gen_reg_item(1024);
 
-	NVDIMM_test_put(it);
-	struct ssd_line* c_it = NVDIMM_test_get(it);
-	NVDIMM_test_compare(c,it,c_it,1);
+	int n = 21;
+	size_t size = NVDIMM_SIZE;
+	size = size/20;
 
+	//TEST_PRINT_2("GENNING: ",NVDIMM_SIZE);
+	//TEST_PRINT_2("GENNING: ",size);
+	test_item** items = gen_n__reg_items(size, n);
 
+	TEST_PRINT("PUTTING \n");
+	for(int i = 0; i < n ; i++)
+	{
 
-	change_val(it);
-	it = change_valsize(it,1500);
+		printf("ITEM: %d \n",i);
+		NVDIMM_test_put(items[i]);
+	}
+	
+	for(int i = 0; i < 2; i++)
+	{
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		NVDIMM_test_compare_if_right(c,items[i],c_it,i);
+		free(items[i]);
+	}
 
-	NVDIMM_test_put(it);
-	c_it = NVDIMM_test_get(it);
-	NVDIMM_test_compare(c,it,c_it,2);
+	TEST_PRINT("GETTING\n");
+	for(int i = 2; i < n ; i++)
+	{
+		printf("ITEM: %d \n",i);
+		printf("KEYLEN: %d   VALLEN: %d  \n",items[i]->keylen,items[i]->vallen);
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
+		if(c_it != NULL) free(c_it);
+		free(items[i]);
+	}
 
-
-	free(it);
+	//free(items);
 	printf("TEST 4 ENDING\n");
 
 }
 
 
-//put a ton of data in
+
+
+
+
+//PUT THEN CHANGE SIZE
 void NVDIMM_test5()
 {
 	char * c = "TEST 5 ";
 	printf("TEST 5 STARTING\n");
 
-	size_t total = 1* (1ULL << 30);
-	int n = 200; //10000 
-	size_t size = total / n;
+	int n = 15;
+	size_t size = NVDIMM_SIZE;
+	size = size/20;
 
+	//TEST_PRINT_2("GENNING: ",NVDIMM_SIZE);
+	//TEST_PRINT_2("GENNING: ",size);
 	test_item** items = gen_n__reg_items(size, n);
 
+	TEST_PRINT("PUTTING \n");
 	for(int i = 0; i < n ; i++)
 	{
 
@@ -187,98 +218,136 @@ void NVDIMM_test5()
 		NVDIMM_test_put(items[i]);
 		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
 		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
+		if(c_it != NULL) free(c_it);
 	}
 	
 
+	TEST_PRINT("CHANGING\n");
 	for(int i = 0; i < n ; i++)
 	{
 		printf("ITEM: %d \n",i);
+		GEN_LOG_WRITE("INSERTING CHAGED VAL");
+        change_val(items[i]);
+        NVDIMM_test_put(items[i]);
+        GEN_LOG_WRITE("GETTING");
 		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
 		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
 		free(items[i]);
 	}
 
-	free(items);
+	//free(items);
 	printf("TEST 5 ENDING\n");
 
 }
 
 
+//fill, then fill again,
+// then change size
 void NVDIMM_test6()
 {
-    char * c = "TEST 6 ";
-    printf("TEST 6 START \n");
-    srand(10);
-    int n = 1000;
+	char * c = "TEST 4 ";
+	printf("TEST 6 STARTING\n");
+
+	int n = 40;
+	size_t size = NVDIMM_SIZE;
+	size = size/20;
+
+
+	test_item** items = gen_n__reg_items(size, n);
+
+	TEST_PRINT("PUTTING \n");
+	for(int i = 0; i < n ; i++)
+	{
+
+		printf("ITEM: %d \n",i);
+		NVDIMM_test_put(items[i]);
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
+		if(c_it != NULL) free(c_it);
+	}
+	
+
+	printf("CHANGING \n");
+	for(int i = 25; i < 28; i++)
+	{
+		printf("ITEM: %d \n",i);
+		GEN_LOG_WRITE("INSERTING CHAGED VAL");
+        change_val(items[i]);
+        NVDIMM_test_put(items[i]);
+        GEN_LOG_WRITE("GETTING");
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
+	}
+
+
+	for(int i = 0; i < 24; i++)
+	{
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		NVDIMM_test_compare_if_right(c,items[i],c_it,i);
+		free(items[i]);
+	}
+
+
+	TEST_PRINT("GETTING\n");
+	for(int i = 24; i < n ; i++)
+	{
+		printf("ITEM: %d \n",i);
+		//printf("KEYLEN: %d   VALLEN: %d  \n",items[i]->keylen,items[i]->vallen);
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
+		if(c_it != NULL) free(c_it);
+		free(items[i]);
+	}
+
+	//free(items);
+	printf("TEST 6 ENDING\n");
+
+}
+
+
+void NVDIMM_test7()
+{
+    char * c = "TEST 7 ";
+    printf("TEST 7 START \n");
+    srand(time(NULL));
+    int n = 400;
     test_item** items = calloc(n,sizeof(test_item*));
     int maxsize = 4096*10;//(1ULL << 30) / 100;
-    int num_opts = 1; 
+    int num_opts = 2; 
     int num = 0;
     printf("MAXSIZE %d \n",maxsize);
     for(int i = 0 ; i < n ; i++)
     {
         //if(i % 1 == 0) printf("I: %d  \n",i);
-        //TEST_PRINT_IF(SSD_COND7," BEFORE SWITCH \n");        
         int opt = rand() % num_opts; 
         struct ssd_line* c_it = NULL;
         int size = 0;
         int ind = -1;
         //TEST_PRINT_IF(SSD_COND7," ENTER SWITCH \n");
-        if( i < 100) opt = 0;
+        if( i < 10) opt = 0;
         
-        if(i % 50 == 0) printf("I: %d   OPT: %d   :: %d\n",i,opt,rte_lcore_id());
+       // if(i % 50 == 0) printf("I: %d   OPT: %d   :: %d\n",i,opt,rte_lcore_id());
         switch(opt){
             case  0 : ;            // generate an item and check for it
-					GEN_LOG_WRITE("TEST PUTTING START");
+                    TEST_PRINT_2("0 I: ",i);
                     size = (rand() % maxsize) + sizeof(size_t);
                     items[num] = gen_reg_item(size);
                     //printf("PUTTING ITEM: %lu  :: %d \n",*((size_t*)(items[num]->key)),rte_lcore_id() );
-
-                    NVDIMM_test_put(items[num]);
-					GEN_LOG_WRITE("TEST PUT SUCCESSFUL, GETTING");
-                    c_it = NVDIMM_test_get(items[num]);
-					GEN_LOG_WRITE("TEST GETTING SUCCESSFUL, COMPARING");
-                    NVDIMM_test_compare_if_wrong(c,items[num],c_it,i);
-					GEN_LOG_WRITE("TEST COMPARING SUCESSFUL");
-                    num++;
-					GEN_LOG_WRITE("TEST PUTTING END");
+					NVDIMM_test_put(items[num]);
+					c_it = NVDIMM_test_get(items[num]);
+					NVDIMM_test_compare_if_wrong(c,items[num],c_it,i);
+					if(c_it != NULL) free(c_it);
+					num++;
                     break;
             // search for a random item
             case 1 : ;
-                    //TEST_PRINT_IF(i > 100,"C1 1");
+                    TEST_PRINT_2("1 I: ",i);
                     ind = rand() % num;
-                    c_it = NVDIMM_test_get(items[ind]);
-                    if(c_it != NULL)
-                    {
-                        NVDIMM_test_compare_if_wrong(c,items[ind],c_it,i);
-                    }
-                    break;
-            // change and reput and test 
-            case 2 : ;
-                    //TEST_PRINT_IF(COND7," SWTICH 2 \n");
-                    //TEST_PRINT_IF(i > 100,"C2 0.5");
-                    ind = rand() % num;
-                    //TEST_PRINT_IF(i > 100,"C2 1");
-                    change_val(items[ind]);
-                    //TEST_PRINT_IF(i > 100,"C2 2");
-                    items[ind] = change_valsize(items[ind],1500);
-                    //TEST_PRINT_IF(i > 100,"C2 3");
-                    NVDIMM_test_put(items[ind]);
-                    //TEST_PRINT_IF(i > 100,"C2 4");
-                    c_it = NVDIMM_test_get(items[ind]);
-                    //TEST_PRINT_IF(i > 100,"C2 5");
-                    NVDIMM_test_compare_if_wrong(c,items[ind],c_it,i);
-                    break;
-            // change size reput and test
-            case 3 :  ;
-                    
-                    //TEST_PRINT_IF(i > 100,"C3 1");
-                    ind = rand() % num;
-                    size = (rand() % maxsize) + sizeof(size_t);
-                    items[ind] = change_valsize(items[ind],1500);
-                    NVDIMM_test_put(items[ind]);
-                    c_it = NVDIMM_test_get(items[ind]);
-                    NVDIMM_test_compare_if_wrong(c,items[ind],c_it,i);
+			        change_val(items[ind]);
+			        NVDIMM_test_put(items[ind]);
+					c_it = NVDIMM_test_get(items[ind]);
+					NVDIMM_test_compare_if_wrong(c,items[ind],c_it,i);
+					if(c_it != NULL) free(c_it);
                     break;
         }
     }
@@ -292,44 +361,172 @@ void NVDIMM_test6()
 
     free(items);
 
-    printf("TEST 6 END \n");
+    printf("TEST 7 END \n");
 }
 
+
+/** MULTITHREADING TEST **/
 
 //put and read 1000 items with random sizes
 void NVDIMM_test8()
 {
-    char * c = "TEST 8 ";
-    printf("TEST 8 STARTING\n");
+	char * c = "TEST 3 ";
+	printf("TEST 3 STARTING\n");
 
-    int n = 100;
-    srand(10);
-    int maxsize = (1ULL << 30) / 100;
-    size_t size = 4024;
+	int n = 20;
+	size_t size = NVDIMM_SIZE;
+	size = size/20;
 
-    test_item** items = gen_n__reg_items(size, n);
+	//TEST_PRINT_2("GENNING: ",NVDIMM_SIZE);
+	//TEST_PRINT_2("GENNING: ",size);
+	test_item** items = gen_n__reg_items(size, n);
 
-    for(int i = 0; i < n ; i++)
-    {
+	TEST_PRINT("PUTTING \n");
+	for(int i = 0; i < n ; i++)
+	{
 
-        printf("ITEM: %d \n",i);
-        NVDIMM_test_put(items[i]);
-        struct ssd_line* c_it = NVDIMM_test_get(items[i]);
-        size_t key = *((size_t*)(items[i]->key));
-        NVDIMM_test_compare_if_wrong(c,items[i],c_it,key);
-    }
-    
+		printf("ITEM: %d \n",i);
+		NVDIMM_test_put(items[i]);
+		struct ssd_line* c_it = NVDIMM_test_get(items[i]);
+		if(c_it != NULL) {
+		 NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
+		 free(c_it);
+		}
+		free(items[i]);
 
-    for(int i = 0; i < n ; i++)
-    {
-        printf("ITEM: %d \n",i);
-        struct ssd_line* c_it = NVDIMM_test_get(items[i]);
-        NVDIMM_test_compare_if_wrong(c,items[i],c_it,i);
-        free(items[i]);
-    }
+	}
 
-    free(items);
-    printf("TEST 8 ENDING\n");
+	free(items);
+	printf("TEST 3 ENDING\n");
 
 }
+
+
+
+static test_item** shared_items;
+static test_item* shared_item;
+
+static rte_spinlock_t shared_lock;
+static bool shared_start  = false;
+
+
+
+
+void NVDIMM_test_multi()
+{
+
+	TEST_PRINT("MULTI TEST 1 START \n");
+	int n = 20;
+	srand(time(0));
+	if(rte_lcore_id() == 1)
+	{
+		rte_spinlock_init(&shared_lock);
+		RTE_LOCK(&shared_lock,"NVDIMM TEST LOCK");
+		shared_items = gen_n__reg_items(1024, n);		
+		TEST_PRINT("ABOUT TO PUT\n");
+		for(int i = 0; i < n ; i++)
+		{
+			NVDIMM_test_put(shared_items[i]);
+		}
+		shared_start = true;
+		RTE_UNLOCK(&shared_lock,"NVDIMM TEST LOCK");
+	}
+	else
+	{
+		TEST_PRINT("ABOUT TO WHILE \n");
+		while(!shared_start)
+		{
+			TEST_PRINT("POOP \n");
+		}
+		TEST_PRINT("DONE WITH WHILE \n");
+	}
+
+	TEST_PRINT_2("past first stage ",shared_start);
+	usleep(1);
+
+	int x = 1000;
+
+	for(int i = 0 ; i < x; i++)
+	{
+		printf("TRY: %d \n",i);	
+		int ind = rand() % n;
+		struct test_item*  item = shared_items[ind];
+		struct ssd_line* c_it = NVDIMM_test_get(item);
+		NVDIMM_test_compare_if_wrong("TEST MULTI 1",item,c_it,i);
+		free(c_it);
+
+	}
+
+	//free(shared_item);
+
+
+	TEST_PRINT("MULTI TEST 1 END \n");
+
+
+
+
+}
+
+
+
+
+void NVDIMM_test_multi_2()
+{
+
+	TEST_PRINT("MULTI TEST 2 START \n");
+	int n = 20;
+	srand(time(0));
+	if(rte_lcore_id() == 1)
+	{
+		rte_spinlock_init(&shared_lock);
+		RTE_LOCK(&shared_lock,"NVDIMM TEST LOCK");
+		shared_item = gen_reg_item(10000);		
+		TEST_PRINT("ABOUT TO PUT\n");
+		NVDIMM_test_put(shared_item);		
+		shared_start = true;
+		RTE_UNLOCK(&shared_lock,"NVDIMM TEST LOCK");
+	}
+	else
+	{
+		TEST_PRINT("ABOUT TO WHILE \n");
+		while(!shared_start)
+		{
+			TEST_PRINT("POOP \n");
+		}
+		TEST_PRINT("DONE WITH WHILE \n");
+	}
+
+	TEST_PRINT_2("past first stage ",shared_start);
+	usleep(1);
+
+	int x = 10;
+	size_t size = sizeof(test_item) + shared_item->vallen + shared_item->keylen;
+	struct test_item* my_item = malloc(size);
+	memcpy(my_item,shared_item,size);
+
+	for(int i = 0 ; i < x; i++)
+	{
+		printf("TRY: %d \n",i);	
+		change_val(my_item);
+		NVDIMM_test_put(my_item);		
+		struct ssd_line* c_it = NVDIMM_test_get(my_item);
+		if(c_it == NULL) 
+		{
+			TEST_PRINT("FAILED \n");
+			exit(0);
+		}
+		free(c_it);
+
+	}
+
+	//free(shared_item);
+
+
+	TEST_PRINT("MULTI TEST 2 END \n");
+
+
+
+
+}
+
 

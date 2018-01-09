@@ -20,7 +20,7 @@ test_item* gen_reg_item(size_t vallen)
 {
 	GEN_LOG_WRITE("GEN REG ITEM START");
 	//item is header + key_num + value
-	test_item* t_it = calloc(sizeof(test_item) + vallen + sizeof(size_t),1);
+	test_item* t_it = calloc(sizeof(test_item) + vallen + sizeof(size_t) + 1,1);
 	GEN_LOG_WRITE_2("ITEM IS : ",(size_t)t_it);
 
 	GEN_LOG_WRITE("GEN REG ITEM START 1");
@@ -55,7 +55,7 @@ test_item* gen_reg_item(size_t vallen)
 
 test_item* gen_item(size_t id, size_t keylen, size_t vallen)
 {
-	test_item* t_it = calloc(sizeof(test_item) + vallen + sizeof(keylen),1);
+	test_item* t_it = calloc(1,sizeof(test_item) + vallen + sizeof(keylen) + 1);
 	t_it->id = id;
 	size_t* key = (size_t *)(t_it + 1);
 	t_it->key =  key;
@@ -76,7 +76,7 @@ Genreates an item with the given keylen and vallen
 test_item* gen_var_item(size_t keylen, size_t vallen)
 {
 	//item is header + key_num + value
-	test_item* t_it = calloc(sizeof(test_item) + vallen + keylen,1);
+	test_item* t_it = calloc(1,sizeof(test_item) + vallen + keylen + 1);
 	
 	rte_spinlock_lock(&test_lock);
 	t_it->id = key_num++;
@@ -100,8 +100,12 @@ void write_ones(void* val, size_t vallen)
     start++;
     uint8_t* space = (uint8_t*)start;
     vallen -= sizeof(size_t);
+
+
     while(vallen > 0)
     {
+	    //TEST_PRINT_2("SPACE: ",(size_t)space);
+
         *space = 0xff;
         space++;
         vallen--;
@@ -132,7 +136,7 @@ test_item* change_valsize(test_item* it,size_t length)
 // if keylen, = 0, then default keylen
 test_item** gen_n_items(size_t keylen, size_t vallen, int n)
 {
-	test_item** items = calloc(sizeof(test_item *),n);
+	test_item** items = calloc(n+1,sizeof(test_item *));
 	for(int i = 0 ; i < n; i ++)
 	{
 		items[i] = gen_var_item(keylen,vallen);
@@ -143,7 +147,7 @@ test_item** gen_n_items(size_t keylen, size_t vallen, int n)
 // if keylen, = 0, then default keylen
 test_item** gen_n__reg_items(size_t vallen, int n)
 {
-	test_item** items = calloc(sizeof(test_item *),n);
+	test_item** items = calloc(n+1,sizeof(test_item *));
 	for(int i = 0 ; i < n; i ++)
 	{
 		items[i] = gen_reg_item(vallen);
