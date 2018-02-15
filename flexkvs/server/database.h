@@ -14,9 +14,9 @@
 
 #include "global.h"
 
-struct cache_item* database_get(void *key, size_t keylen, uint32_t hv,int t);
+struct ssd_line* database_get(void *key, size_t keylen, uint32_t hv);
 
-void database_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv, int t);
+void database_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv);
 
 void database_init();
 

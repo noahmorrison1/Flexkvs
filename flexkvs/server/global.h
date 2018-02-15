@@ -10,7 +10,7 @@
 #include <rte_spinlock.h>
 
 #ifndef TESTING 
-#define TESTING true
+#define TESTING false
 #endif
 
 #ifndef TESTING_FINAL
@@ -25,6 +25,10 @@
 
 #ifndef MULTI
 #define MULTI true
+#endif
+
+#ifndef NVD_ON 
+#define NVD_ON true
 #endif
 
 
@@ -65,14 +69,16 @@
 #endif
 
 
-
+/*#ifndef WAIT
+#define WAIT()
+#endif*/
 
 #ifndef TEST_DATA
 #define TEST_DATA(src,size,c)  if(TESTING) {for(int i =0 ; i < size; i++) {	uint8_t s = *(src + i); if(s != 0){  printf("S %s: %d \n",c,s); printf("I %s: %d \n",c,i); } }}
 #endif
 
 #ifndef LOCK_TEST
-#define LOCK_TEST true
+#define LOCK_TEST false
 #endif
 
 #ifndef NOHTLOCKS
@@ -95,6 +101,9 @@
 #endif
 
 
+
+//fprintf(logs.fptrs[GEN_LOG_I][rte_lcore_id()],"Set Latency %lf   Get Latency  %lf    N: %d  \n",s,g,n)
+
 //if(TESTING_FINAL) printf("Writing to Buffer %lu - %lu  :: %d \n",(char*)dest - (char*)start,(char*)dest - (char*)start + amount ,rte_lcore_id());
 
 
@@ -112,21 +121,22 @@
 #endif
 
 
+
 #ifndef LOG
-#define LOG(l,n) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOG(l,n) //rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%d :: %d \n",n,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef LOGC
-#define LOGC(l,c) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOGC(l,c) //rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s :: %d \n",c,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef LOGCN
-#define LOGCN(l,c,n) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s %lu :: %d \n",c,n,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOGCN(l,c,n) //rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s %lu :: %d \n",c,n,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 
 #ifndef LOGCC
-#define LOGCC(l,c1,c2) rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s  %s:: %d \n",c1,c2,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
+#define LOGCC(l,c1,c2) //rte_spinlock_lock(&logs.lock); logs.count++; fprintf(logs.fptrs[l][rte_lcore_id()],"%s  %s:: %d \n",c1,c2,logs.count); rte_spinlock_unlock(&logs.lock); fflush(logs.fptrs[l][rte_lcore_id()])
 #endif
 
 #ifndef NUMLOGS
@@ -206,7 +216,7 @@
 #endif
 
 
-struct {
+static struct {
 	char** base_names;
 	int* fptrs[NUMLOGS];
 	rte_spinlock_t lock;

@@ -1,15 +1,21 @@
 #include "database.h" 
 
 
-struct ssd_line* database_get(void *key, size_t keylen, uint32_t hv, int t)
+struct ssd_line* database_get(void *key, size_t keylen, uint32_t hv)
 {
 
-	struct ssd_line* line =  NVDIMM_read(key, keylen,hv);
+
+	struct ssd_line* line;
+
+#if NVD_ON	
+	line = NVDIMM_read(key, keylen,hv);
 	if(line != NULL) return line;
+#endif
 
 
-	struct cache_item* ret = cache_ht_get(key,keylen,hv);
-	if(ret != NULL) return ret;
+
+	line = cache_ht_get(key,keylen,hv);
+	if(line != NULL) return line;
 
 
 	line = ssd_ht_get(key,keylen,hv);
@@ -22,17 +28,22 @@ struct ssd_line* database_get(void *key, size_t keylen, uint32_t hv, int t)
 
 }
 
-void database_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv, int t)
 
 
 
-void database_(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv, int t)
+// this is not including NVDIMM SET, this method is called by the NVDIMM CODE
+void database_set(void *key, size_t keylen, void *val, size_t vallen, uint32_t hv)
 {
-    TEST_PRINT_FINAL("SSSD SET",t);
+
+#if !NVD_ON
+	cache_flush(key,keylen,hv);
+#endif
+
 	size_t version = ssd_ht_set(key,keylen,val,vallen,hv);
-	TEST_PRINT_FINAL("CACHE SET",t);
+
 	cache_ht_set(key,keylen,val,vallen,hv,version);
 }
+
 
 void database_init()
 {

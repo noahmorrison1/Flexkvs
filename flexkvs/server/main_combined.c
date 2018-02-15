@@ -9,8 +9,6 @@
 #include <rte_launch.h>
 #include <rte_memcpy.h>
 #include <rte_lcore.h>
-#include <rte_cycles.h>
-
 
 #include "iokvs.h"
 #include "database.h"
@@ -25,7 +23,7 @@
 /* If linux, use recvmmsg instead of recvmsg (enables batching) */
 #ifndef LINUX_RECVMMSG
 #define LINUX_RECVMMSG 1
-#define BATCH_MAX 1
+#define BATCH_MAX 32
 #endif
 
 /* Enable DPDK */
@@ -40,15 +38,11 @@
 
 /* DPDK batch size */
 #ifndef BATCH_MAX
-#define BATCH_MAX 1
+#define BATCH_MAX 32
 #endif
 
 #ifndef ENABLE_PREFETCHING
 #define ENABLE_PREFETCHING 0
-#endif
-
-#ifndef HZ
-#define HZ rte_get_timer_hz()
 #endif
 
 #define DPDK_V4_HWXSUM 1
@@ -236,23 +230,10 @@ static size_t rec_count = 0;
 static int send_counts[4];
 static int rec_counts[4];
 
-static clock_t tot_set_time[4] = {0,0,0,0};
-static size_t tot_set_reqs[4] = {0,0,0,0};
-
-static clock_t tot_get_time[4] = {0,0,0,0};
-static size_t tot_get_reqs[4] = {0,0,0,0};
-
-
-static size_t packet_loop(int fd, void **bufs)
+static size_t packet_loop(int fd, void **bufs, struct item_allocator *ia)
 {
-
-    clock_t t1 ,t2, t3 = 0;
-
-
     static bool stop_sending = false;
     if(stop_sending) return 0;
-
-    int id = rte_lcore_id();
 
 
     struct mmsghdr msgs[BATCH_MAX];
@@ -276,7 +257,6 @@ static size_t packet_loop(int fd, void **bufs)
     int i, j, n;
     uint32_t blen;
 
-
     /* Prepare to receive batch */
     for (i = 0; i < BATCH_MAX; i++) {
         msgs[i].msg_hdr.msg_name = sin + i;
@@ -295,9 +275,6 @@ static size_t packet_loop(int fd, void **bufs)
 
 static int recived = 0;
 
-
-
-
     // Receive batch 
     if ((n = recvmmsg(fd, msgs, BATCH_MAX, MSG_DONTWAIT, NULL)) == 0 ||
             (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)))
@@ -308,8 +285,6 @@ static int recived = 0;
         abort();
     }
 
-    t1 = rte_get_timer_cycles();
-
 
     for (i = 0; i < n; i++) {
         msglens[i] = msgs[i].msg_len;
@@ -317,7 +292,6 @@ static int recived = 0;
         hdrs[i] = bufs[i];
     
 
-    t3 = rte_get_timer_cycles();
 
 
         /*if (hdrs[i]->ether.ether_type == htons(ETHER_TYPE_IPv4) &&
@@ -419,15 +393,7 @@ static int recived = 0;
     for (i = 0; i < n; i++) {
         if (drops[i]) continue;
         if (cmds[i] == PROTOCOL_BINARY_CMD_SET) {
-            //t1 = rte_get_timer_cycles();
-#if NVD_ON
             NVDIMM_write_entry(keys[i],keylens[i],(char*)keys[i] + keylens[i] , totlens[i] - keylens[i], hashes[i]);
-#else 
-            database_set(keys[i],keylens[i],(char*)keys[i] + keylens[i] , totlens[i] - keylens[i], hashes[i]);
-#endif
-            //t2 = rte_get_timer_cycles();
-
-            //tot_set_time[id] += t2 - t1;
         }
     }
 
@@ -435,8 +401,6 @@ static int recived = 0;
     for (i = 0; i < n; i++) {
         if (drops[i]) continue;
         if (cmds[i] == PROTOCOL_BINARY_CMD_GET) {
-            
-            //t1 = rte_get_timer_cycles();
             rdits[i] = database_get(keys[i], keylens[i], hashes[i]);
             if (rdits[i] == NULL) {
                 status[i] = htons(PROTOCOL_BINARY_RESPONSE_KEY_ENOENT);
@@ -486,19 +450,10 @@ static int recived = 0;
     /* Release items */
     for (i = 0; i < n; i++) {
         if (drops[i]) continue;
-        if (cmds[i] == PROTOCOL_BINARY_CMD_SET) {
-
-            tot_set_reqs[id]++;
-
-            t2 = rte_get_timer_cycles();
-
-            tot_set_time[id] += t2 - t1;
+        if (cmds[i] == PROTOCOL_BINARY_CMD_SET && newits[i] != NULL) {
             //item_unref(newits[i]);
         } else if (cmds[i] == PROTOCOL_BINARY_CMD_GET && rdits[i] != NULL) {
             free(rdits[i]);
-            tot_get_reqs[id]++;
-            t2 = rte_get_timer_cycles();
-            tot_get_time[id] += t2 - t1;
         }
     }
 
@@ -515,7 +470,6 @@ static int recived = 0;
     }
 
 
-
     /* Send out responses */
     if ((n = sendmmsg(fd, msgs, j, 0)) >= 0 && n < j) {
         fprintf(stderr, "Incomplete send: %d instead of %d\n", n, j);
@@ -524,104 +478,91 @@ static int recived = 0;
         abort();
     }
 
-    if(n != 0 && t2 != 0) {
-
-
-        if(t2 < t1)
-        {
-            printf("T1: %ld  T2: %ld  \n",t1,t2);
-        }
-        //clock_t t3 = rte_get_timer_cycles();
-        double this_latency = ((double)(t2 - t1)) / ((double)HZ);
-        //double this_latency2 = ((double)(t3 - t1)) / ((double)HZ);
-
-        double set_latency  =  (((double)tot_set_time[id]) / (double)HZ) / ((double)tot_set_reqs[id]);
-        double get_latency  =  (((double)tot_get_time[id]) / (double)HZ) / ((double)tot_get_reqs[id]);  
-        //printf("SIZEOF CLOCK: %lu  HZ; %lu    SET_T: %lu   SET_REQS %lu    GET_T: %lu   GET_R: %lu   \n",sizeof(clock_t),HZ,
-        //    tot_set_time[id],tot_set_reqs[id],tot_get_time[id],tot_get_reqs[id]);
-        ///printf("Set Latency %lf   Get Latency  %lf  This Latency: %lf  N: %d    ID: %d \n",
-         //   set_latency,get_latency,this_latency,j,id);
-        //printf();
-
-    }
-
-
     return j;
 }
 
+static size_t clean_log(struct item_allocator *ia, bool idle)
+{
+    struct item *it, *nit;
+    size_t n;
 
+    if (!idle) {
+        /* We're starting processing for a new request */
+        ialloc_cleanup_nextrequest(ia);
+    }
 
+    n = 0;
+    while ((it = ialloc_cleanup_item(ia, idle)) != NULL) {
+        n++;
+        if (it->refcount != 1) {
+            if ((nit = ialloc_alloc(ia, sizeof(*nit) + it->keylen + it->vallen,
+                    true)) == NULL)
+            {
+                fprintf(stderr, "Warning: ialloc_alloc failed during cleanup :-/\n");
+                abort();
+            }
+
+            nit->hv = it->hv;
+            nit->vallen = it->vallen;
+            nit->keylen = it->keylen;
+            rte_memcpy(item_key(nit), item_key(it), it->keylen + it->vallen);
+            hasht_put(nit, it);
+            item_unref(nit);
+        }
+        item_unref(it);
+    }
+    return n;
+}
+
+static struct item_allocator **iallocs;
 static size_t n_ready = 0;
 
 static int processing_thread(void *data)
 {
+#if LINUX_SOCKETS
     void *bufs[BATCH_MAX];
     int i, fd;
-
+#elif LINUX_DPDK
+    unsigned p;
+#endif
+    struct item_allocator ia;
     size_t had_pkts, total_reqs = 0, total_clean = 0;
     static uint16_t qcounter;
     uint16_t q;
 
+    ialloc_init_allocator(&ia);
     q = __sync_fetch_and_add(&qcounter, 1);
-
+#if LINUX_SOCKETS
     for (i = 0; i < BATCH_MAX; i++) {
         bufs[i] = malloc(MAX_MSGSIZE);
     }
     fd = dup(sock_fd);
+#elif LINUX_DPDK
+    p = 0;
+#endif
 
-
+    iallocs[q] = &ia;
     __sync_fetch_and_add(&n_ready, 1);
 
     printf("Worker starting %d  :: FD :: %d \n",rte_lcore_id(),fd);
 
-    int wr = 0;
-    double tot_lat = 0;
     while (1) {
-        had_pkts = 0;
-        bool got_packets = false;
-	//printf("Starting Worker Loop \n"); 
-
-        clock_t t1 = rte_get_timer_cycles();
-        double ttime_l = 0;
-        for( int i = 0; i < 64; i++) {   
-            clock_t tt1 = rte_get_timer_cycles();
-            had_pkts += packet_loop(fd, bufs);
-            if(had_pkts != 0) {
-                got_packets = true;
-                clock_t tt2 = rte_get_timer_cycles();
-                double lat = ((double)(tt2 - tt1))/ ((double)HZ);
-                ttime_l += lat;
-                //printf("Run Time: %f  ID; %d \n",lat,rte_lcore_id());
-                wr++;
-                tot_lat += lat;
-
-            }
-
-
-        }
-
-    clock_t t2 = rte_get_timer_cycles();
-
-	//printf("Worker Cleaning \n");
-#if NVD_ON
-    //`if(wr % 100 == 99) NVDIMM_write_out_next();
+	//printf("Starting Worker Loop \n");    
+#if LINUX_SOCKETS
+        had_pkts = packet_loop(fd, bufs, &ia);
+#else
+        had_pkts = packet_loop(&ia, p, q);
+        p = (p + 1) % num_ports;
 #endif
-
-        clock_t t3 = rte_get_timer_cycles();
-
-        total_reqs += had_pkts;
-        double lat1 = ((double)(t2 - t1))/ ((double)HZ);
-        double lat2 = ((double)(t3 - t1))/ ((double)HZ);
-
-
-        double avg_lat = tot_lat /(double)wr;
-
-        if(got_packets &&  total_reqs % 1 == 0)
-        {
-            //printf("GOT PACKETS TOT: %lu  NEW: %d  LAT1: %lf  AVG: %lf  ID: %d \n",total_reqs,had_pkts,lat1,avg_lat,rte_lcore_id());
+	//printf("Worker Cleaning \n");
+        NVDIMM_write_out_next();
+#if 0
+        if (total_reqs / 100000 != (total_reqs + had_pkts) / 100000) {
+            printf("%u: total=%10zu  clean=%10zu\n", q, total_reqs, total_clean);
         }
+#endif
+        total_reqs += had_pkts;
 	//printf("Ending Worker Loop \n");
-        //if(had_pkts != 0) wr++;
     }
 
     return 0;
@@ -633,18 +574,14 @@ static void maintenance(void)
 
     n = rte_lcore_count() - 1;
     while (1) {
-        //for (i = 0; i < n; i++) {
+        for (i = 0; i < n; i++) {
 	    //printf("Starting Maintenance \n");
-#if NVD_ON
         NVDIMM_write_out_next();
-#endif
 	    //printf("Ending Maintenance \n");
-        //}
-        //usleep(1);
+        }
+        usleep(1);
     }
 }
-
-
 
 
 int main(int argc, char *argv[])
@@ -665,6 +602,8 @@ int main(int argc, char *argv[])
     //rte_mempool_ops_init();
     network_init();
     printf("Networking initialized\n");
+    iallocs = calloc(rte_lcore_count() - 1, sizeof(*iallocs));
+
 
     rte_eal_mp_remote_launch(processing_thread, NULL, SKIP_MASTER);
 

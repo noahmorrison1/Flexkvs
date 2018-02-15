@@ -236,7 +236,10 @@ void overwrite(struct cache_item* it, void* val, size_t vallen, size_t verison);
 
 
 /** Flushes the specific key from the cache**/
-void flush(void* key, size_t keylen,size_t hv);
+void cache_flush(void *key, size_t keylen, uint32_t hv);
+
+
+void cache_flush_item(struct cache_item* item);
 
 
 

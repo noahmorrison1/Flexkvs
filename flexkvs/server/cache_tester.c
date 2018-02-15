@@ -131,7 +131,7 @@ void test_put_all(test_item** items, int n)
 }
 
 
-struct cache_item* test_get(test_item* it)
+struct ssd_line* test_get(test_item* it)
 {
 
 	size_t hv = jenkins_hash(it->key,it->keylen);
@@ -155,29 +155,40 @@ void cache_test_init()
 
 }
 
-void test_compare(char* c, test_item* it,struct cache_item* c_it,int n)
+void test_compare(char* c, test_item* it,struct ssd_line* c_it,int n)
 {
-	if(!compare(it,c_it)) printf("%s: FAILED at %d \n",c,n);
+	if(!ssd_compare(it,c_it)) printf("%s: FAILED at %d \n",c,n);
 	else printf("%s: PASSED at %d \n",c,n);
 
-	read_release(c_it);
+	//read_release(c_it);
 }
 
-void test_compare_if_wrong(char* c, test_item* it,struct cache_item* c_it,int n)
+void test_compare_if_wrong(char* c, test_item* it,struct ssd_line* c_it,int n)
 {
-	if(!compare(it,c_it)){ printf("%s: FAILED at %d \n",c,n); exit(0);}
+	if(!ssd_compare(it,c_it)){
+	 printf("%s: FAILED at %d \n",c,n); 
+	 if(c_it != NULL)
+	 {
+	 
+	 	display(it->key, c_it->key, it->keylen);
+
+	  	display(it->val, c_it->val, it->vallen);
+		}
+
+		exit(0);
+	}
 
 	if(c_it != NULL){
-	    read_release(c_it);
+	    //read_release(c_it);
 	}
 }
 
-void test_compare_if_right(char* c, test_item* it,struct cache_item* c_it,int n)
+void test_compare_if_right(char* c, test_item* it,struct ssd_line* c_it,int n)
 {
-	if(compare(it,c_it)){ printf("%s: FAILED at %d \n",c,n); exit(0);}
+	if(ssd_compare(it,c_it)){ printf("%s: FAILED at %d \n",c,n); exit(0);}
 
 	if(c_it != NULL){
-	    read_release(c_it);
+	    //read_release(c_it);
 	}
 }
 
@@ -188,16 +199,18 @@ void test1()
 	test_item* it = gen_reg_item(1024);
 
 	test_put(it);
-	struct cache_item* c_it = test_get(it);
+	struct ssd_line* c_it = test_get(it);
 
 
 
-	if(!compare(it,c_it)) {TEST_PRINT("PUT DID NOT WORK!! \n");}
+	if(!ssd_compare(it,c_it)) {
+		TEST_PRINT("PUT DID NOT WORK!! \n");
+		display(it->val,c_it->val,it->vallen);
+	}
 	else {TEST_PRINT("TEST1 PASSED \n");}
 
-	#ifndef NOHTLOCKS
-	    rte_spinlock_unlock(&c_it->lock);
-	#endif
+
+	free(c_it);
 	free(it);
 	TEST_PRINT("TEST 1 ENDING \n");
 }
@@ -210,9 +223,9 @@ void test2()
 	test_item* it = gen_reg_item(1024);
 
 	test_put(it);
-	struct cache_item* c_it = test_get(it);
+	struct ssd_line* c_it = test_get(it);
 	test_compare("TEST2",it,c_it,1);
-
+	free(c_it);
 
 
 	change_val(it);
@@ -221,6 +234,7 @@ void test2()
 	test_compare("TEST2",it,c_it,2);
 
 
+	free(c_it);
 	free(it);
 	TEST_PRINT("TEST 2 ENDING\n");
 }
@@ -235,9 +249,9 @@ void test3()
 	test_item* it = gen_reg_item(1024);
 
 	test_put(it);
-	struct cache_item* c_it = test_get(it);
+	struct ssd_line* c_it = test_get(it);
 	test_compare(c,it,c_it,1);
-
+	free(c_it);
 
 
 	change_val(it);
@@ -246,6 +260,7 @@ void test3()
 	test_put(it);
 	c_it = test_get(it);
 	test_compare(c,it,c_it,2);
+	free(c_it);
 
 
 	free(it);
@@ -273,10 +288,11 @@ void test4()
 
 	for(int i = 0; i < n ; i++)
 	{
-		struct cache_item* c_it = test_get(items[i]);
+		struct ssd_line* c_it = test_get(items[i]);
 		//printf("ITEM 2 : %d \n",i);
 		test_compare_if_wrong(c,items[i],c_it,i);
 		free(items[i]);
+		free(c_it);
 	}
 
 	free(items);
@@ -308,8 +324,9 @@ void test5()
 	TEST_PRINT("TEST 5 PART 1 \n");
 	for(int i = 0; i < n ; i++)
 	{
-		struct cache_item* c_it = test_get(items[i]);
+		struct ssd_line* c_it = test_get(items[i]);
 		test_compare_if_wrong(c,items[i],c_it,i);
+		free(c_it);
 	}
 
 	TEST_PRINT("TEST 5 PART 2\n");
@@ -326,8 +343,9 @@ void test5()
 
 	for(int i = 0; i < n ; i++)
 	{
-		struct cache_item* c_it = test_get(items[i]);
+		struct ssd_line* c_it = test_get(items[i]);
 		test_compare_if_wrong(c,items[i],c_it,i);
+		free(c_it);
 		free(items[i]);
 	}
 
@@ -354,28 +372,28 @@ void test6()
 	{
 		test_put(items[i]);
 		printf("ITEMS: %d \n",i);
-		struct cache_item* c_it = test_get(items[i]);
+		struct ssd_line* c_it = test_get(items[i]);
 		test_compare_if_wrong(c,items[i],c_it,i);
+		free(c_it);
 
 	}
 
     //sleep(1);
 	for(int i = 0; i < n ; i++)
 	{
-			struct cache_item* c_it = test_get(items[i]);
+			struct ssd_line* c_it = test_get(items[i]);
 			printf("Items 2: %d \n",i);
 			
 			if(MULTI)
 			{
 			    if(c_it != NULL)
 			    {
-			        if(!compare(items[i],c_it))
+			        if(!ssd_compare(items[i],c_it))
 			        {
 			            printf("FAILED AT: %d \n",i);
 			            printf("Vallen: %d,%d     Keylen: %d,%d   \n",items[i]->vallen,c_it->vallen,items[i]->keylen,c_it->keylen);
 			            exit(0);
 			        }
-			        rte_spinlock_unlock(&c_it->lock);
 			    }
 			}
 			else {
@@ -399,6 +417,7 @@ void test6()
     			}
 			}
 			
+			if(c_it != NULL) free(c_it);
 			free(items[i]);
 	}
 
@@ -431,7 +450,7 @@ void test7()
 		if(i % 1 == 0) printf("I: %d  \n",i);
 		//TEST_PRINT_IF(COND7," BEFORE SWITCH \n");		
 		int opt = rand() % num_opts; 
-		struct cache_item* c_it = NULL;
+		struct ssd_line* c_it = NULL;
 		int size = 0;
 		int ind= -1;
 		//TEST_PRINT_IF(COND7," ENTER SWITCH \n");
@@ -469,6 +488,7 @@ void test7()
 					change_val(items[ind]);
 					//items[ind] = change_valsize(items[i],1500);
 					test_put(items[ind]);
+					GEN_LOG_WRITE("ABOUT TO GET");
 					c_it = test_get(items[ind]);
 					test_compare_if_wrong(c,items[ind],c_it,i);
 					RAM_GEN_LOG_WRITE(" SWTICH 2 END");
@@ -486,7 +506,10 @@ void test7()
 					RAM_GEN_LOG_WRITE(" SWTICH 3 END");
 
 					break;
+
+
 		}
+		if(c_it != NULL) free(c_it);
 	}
 
 	for(int i = 0 ; i < num; i++)

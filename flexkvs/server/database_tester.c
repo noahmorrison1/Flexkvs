@@ -7,161 +7,274 @@
 
 rte_spinlock_t database_test_lock;
 
-void database_test_init()
-{
-    rte_spinlock_init(&database_test_lock);
-    database_test_3();
-}
 
-void database_test_put(test_item* it, int t)
+void database_test_put(test_item* it)
 {
     size_t hv = jenkins_hash(it->key,it->keylen);
-    database_set(it->key, it->keylen,it->val, it->vallen, hv,t);
+    cache_flush(it->key,it->keylen,hv);
+    NVDIMM_write_entry(it->key, it->keylen,it->val, it->vallen, hv);
 }
 
-void database_test_put_all(test_item** items, int n, int t)
+void database_test_put_all(test_item** items, int n)
 {
     for(int i = 0; i < n ; i++)
     {
-       database_test_put(items[i],t);
+       database_test_put(items[i]);
     }
 }
 
-struct cache_item* database_test_get(test_item* it,  int t)
+struct ssd_line* database_test_get(test_item* it)
 {
     size_t hv = jenkins_hash(it->key,it->keylen);
-    return database_get(it->key, it->keylen, hv ,t);
+    return database_get(it->key, it->keylen, hv);
 }
 
 
 
+void database_test_init()
+{
+
+    rte_spinlock_init(&database_test_lock);
+
+    //database_test1();
+    //database_test2();
+    //database_test3();
+    //database_test4();
+    //database_test5();
+    //database_test6();
+    database_test8();
+}
+
 //single put
-void database_test_1()
+void database_test1()
 {
     printf("TEST 1 STARTING \n");
     test_item* it = gen_reg_item(1024);
-    int t = rand();
-    database_test_put(it,t);
-    struct cache_item* c_it = database_test_get(it,t);
+
+    database_test_put(it);
+    struct ssd_line* c_it = database_test_get(it);
 
 
 
-    if(!compare(it,c_it)) {TEST_PRINT("PUT DID NOT WORK!! \n");}
-    else {TEST_PRINT("TEST1 PASSED");}
+    if(!ssd_compare(it,c_it)) {
+        printf("PUT DID NOT WORK!! \n");
 
-    #ifndef NOHTLOCKS
-        rte_spinlock_unlock(&c_it->lock);
-    #endif
+        if(c_it != NULL) display(c_it->key,it->key,it->keylen + it->vallen);
+    }
+    else {printf("TEST1 PASSED \n");}
+
     free(it);
-    TEST_PRINT("TEST 1 ENDING\n");
+    printf("TEST 1 ENDING\n");
 }
 
-void database_test_2()
+//single put
+void database_test2()
 {
-    char * c = "TEST 4 ";
-    printf("TEST 2 \n");
-    int t = rand();
-    int n = 200;
-    size_t size = 1024;
-    
+    printf("TEST 2 STARTING \n");
+    test_item* it = gen_reg_item(SSD_PAGE_SIZE *2);
+
+    database_test_put(it);
+    struct ssd_line* c_it = database_test_get(it);
+
+
+
+    if(!ssd_compare(it,c_it)) {
+        printf("PUT DID NOT WORK!! \n");
+
+        if(c_it != NULL) display(c_it->key,it->key,it->keylen + it->vallen);
+    }
+    else {printf("TEST 2 PASSED \n");}
+
+    free(it);
+    printf("TEST 2 ENDING\n");
+}
+
+
+//put and read 1000 items
+void database_test3()
+{
+    char * c = "TEST 3 ";
+    printf("TEST 3 STARTING\n");
+
+    int n = 100;
+    size_t size = 4024;
+
     test_item** items = gen_n__reg_items(size, n);
+
+    for(int i = 0; i < n ; i++)
+    {
+
+        //printf("ITEM: %d \n",i);
+        database_test_put(items[i]);
+    }
+    
+
+    for(int i = 0; i < n ; i++)
+    {
+        //printf("ITEM: %d \n",i);
+        struct ssd_line* c_it = database_test_get(items[i]);
+        ssd_test_compare_if_wrong(c,items[i],c_it,i);
+        free(items[i]);
+    }
+
+    free(items);
+    printf("TEST 3 ENDING\n");
+
+}
+
+
+
+
+
+//change valsize
+void database_test4()
+{
+    printf("TEST 4 STARTING\n");
+    char* c = "TEST 4";
+    test_item* it = gen_reg_item(1024);
+
+    database_test_put(it);
+    struct ssd_line* c_it = database_test_get(it);
+    ssd_test_compare(c,it,c_it,1);
+
+
+
+    change_val(it);
+    it = change_valsize(it,1500);
+
+    database_test_put(it);
+    c_it = database_test_get(it);
+    ssd_test_compare(c,it,c_it,2);
+
+
+    free(it);
+    printf("TEST 4 ENDING\n");
+
+}
+
+
+//put a ton of data in
+void database_test5()
+{
+    char * c = "TEST 5 ";
+    printf("TEST 5 STARTING\n");
+
+    size_t total = 1* (1ULL << 30);
+    
+    if(MULTI) total = total / 4;
+    size_t size = 1ULL << 15;
+    int n = total / size;
+    printf("N: %d \n",n); 
+
+    test_item** items = gen_n__reg_items(size, n);
+
+    for(int i = 0; i < n ; i++)
+    {
+
+        printf("ITEM: %d \n",i);
+        database_test_put(items[i]);
+        struct ssd_line* c_it = database_test_get(items[i]);
+        ssd_test_compare_if_wrong(c,items[i],c_it,i);
+        if(c_it != NULL) free(c_it);
+    }
+    
+
     for(int i = 0; i < n ; i++)
     {
         printf("ITEM: %d \n",i);
-        database_test_put(items[i],t);
-    }
-    
-    
-    for(int i = 0; i < n ; i++)
-    {
-        struct cache_item* c_it = database_test_get(items[i],t);
-        test_compare_if_wrong(c,items[i],c_it,i);
+        struct ssd_line* c_it = database_test_get(items[i]);
+        ssd_test_compare_if_wrong(c,items[i],c_it,i);
+        if(c_it != NULL) free(c_it);
         free(items[i]);
     }
-    
+
     free(items);
-    printf("TEST 2 END \n");
-    
+    GEN_LOG_WRITE("TEST 5 ENDING");
+    printf("TEST 5 ENDING\n");
+
 }
 
 
-void database_test_3()
+void database_test6()
 {
-    char * c = "TEST 7 ";
-    printf("TEST 7 START \n");
-    rte_spinlock_lock(&database_test_lock);
-    int t = time(NULL);
-    srand(t);
-    t = rand();
-    rte_spinlock_unlock(&database_test_lock);
-    int n = 4000;
+    char * c = "TEST 6 ";
+    printf("TEST 6 START \n");
+    srand(10);
+    int n = 1000;
     test_item** items = calloc(n,sizeof(test_item*));
-    int maxsize = RAM_CACHE_SIZE / 10;
-    int num_opts = 4; 
+    int maxsize = 4096*10;//(1ULL << 30) / 100;
+    int num_opts = 1; 
     int num = 0;
-    int made = 0;
-    
     printf("MAXSIZE %d \n",maxsize);
     for(int i = 0 ; i < n ; i++)
     {
-        if(i % 1 == 0) printf("I: %d       : %d \n",i,t);
-        //TEST_PRINT_IF(COND7," BEFORE SWITCH \n");        
+        //if(i % 1 == 0) printf("I: %d  \n",i);
+        //TEST_PRINT_IF(SSD_COND7," BEFORE SWITCH \n");        
         int opt = rand() % num_opts; 
-        struct cache_item* c_it = NULL;
+        struct ssd_line* c_it = NULL;
         int size = 0;
-        int ind= -1;
-        //TEST_PRINT_IF(COND7," ENTER SWITCH \n");
-        if( i < 4000) opt = 0;
+        int ind = -1;
+        //TEST_PRINT_IF(SSD_COND7," ENTER SWITCH \n");
+        if( i < 100) opt = 0;
+        
+        if(i % 5 == 0) printf("I: %d   OPT: %d   :: %d\n",i,opt,rte_lcore_id());
         switch(opt){
             case  0 : ;            // generate an item and check for it
-                    //TEST_PRINT_IF(COND7," SWTICH 0 \n");
+                    GEN_LOG_WRITE("TEST PUTTING START");
                     size = (rand() % maxsize) + sizeof(size_t);
-                    TEST_PRINT_FINAL("Before Gen ",t);
-                    items[made] = gen_reg_item(size);
-                    TEST_PRINT_FINAL("Before PUT ",t);
-                    database_test_put(items[made],t);
-                    TEST_PRINT_FINAL("Before GET ",t);
-                    c_it = database_test_get(items[made],t);
-                    TEST_PRINT_FINAL("Before COMPARE ",t);
-                    test_compare_if_wrong(c,items[made],c_it,i);
-                    TEST_PRINT_FINAL("AFTER COMPARE ",t);
-                    made++;
+                    items[num] = gen_reg_item(size);
+                    //printf("PUTTING ITEM: %lu  :: %d \n",*((size_t*)(items[num]->key)),rte_lcore_id() );
+
+                    database_test_put(items[num]);
+                    GEN_LOG_WRITE("TEST PUT SUCCESSFUL, GETTING");
+                    c_it = database_test_get(items[num]);
+                    GEN_LOG_WRITE("TEST GETTING SUCCESSFUL, COMPARING");
+                    ssd_test_compare_if_wrong(c,items[num],c_it,i);
+                    GEN_LOG_WRITE("TEST COMPARING SUCESSFUL");
+                    num++;
+                    GEN_LOG_WRITE("TEST PUTTING END");
                     break;
             // search for a random item
             case 1 : ;
-                    //TEST_PRINT_IF(COND7," SWTICH 1 \n");
+                    //TEST_PRINT_IF(i > 100,"C1 1");
                     ind = rand() % num;
-                    c_it = database_test_get(items[ind],t);
+                    c_it = database_test_get(items[ind]);
                     if(c_it != NULL)
                     {
-                        test_compare_if_wrong(c,items[ind],c_it,i);
+                        ssd_test_compare_if_wrong(c,items[ind],c_it,i);
                     }
                     break;
             // change and reput and test 
             case 2 : ;
                     //TEST_PRINT_IF(COND7," SWTICH 2 \n");
+                    //TEST_PRINT_IF(i > 100,"C2 0.5");
                     ind = rand() % num;
+                    //TEST_PRINT_IF(i > 100,"C2 1");
                     change_val(items[ind]);
-                    //items[ind] = change_valsize(items[i],1500);
-                    database_test_put(items[ind],t);
-                    c_it = database_test_get(items[ind],t);
-                    test_compare_if_wrong(c,items[ind],c_it,i);
+                    //TEST_PRINT_IF(i > 100,"C2 2");
+                    items[ind] = change_valsize(items[ind],1500);
+                    //TEST_PRINT_IF(i > 100,"C2 3");
+                    database_test_put(items[ind]);
+                    //TEST_PRINT_IF(i > 100,"C2 4");
+                    c_it = database_test_get(items[ind]);
+                    //TEST_PRINT_IF(i > 100,"C2 5");
+                    ssd_test_compare_if_wrong(c,items[ind],c_it,i);
                     break;
             // change size reput and test
             case 3 :  ;
-                    //TEST_PRINT_IF(COND7," SWTICH 3 \n");
+                    
+                    //TEST_PRINT_IF(i > 100,"C3 1");
                     ind = rand() % num;
                     size = (rand() % maxsize) + sizeof(size_t);
                     items[ind] = change_valsize(items[ind],1500);
-                    database_test_put(items[ind],t);
-                    c_it = database_test_get(items[ind],t);
-                    test_compare_if_wrong(c,items[ind],c_it,i);
+                    database_test_put(items[ind]);
+                    c_it = database_test_get(items[ind]);
+                    ssd_test_compare_if_wrong(c,items[ind],c_it,i);
                     break;
         }
-        num = made;
     }
 
-    for(int i = 0 ; i < made; i++)
+    for(int i = 0 ; i < num; i++)
     {
         free(items[i]);
 
@@ -169,34 +282,46 @@ void database_test_3()
 
 
     free(items);
-
-    printf("TEST 7 END \n");
+    GEN_LOG_WRITE("TEST 6 END");
+    printf("TEST 6 END \n");
 }
 
-void database_test_4()
+
+//put and read 1000 items with random sizes
+void database_test8()
 {
-    char * c = "TEST 4 ";
-    printf("TEST 4 \n");
-    int t = rand();
-    int n = 200;
-    size_t size = 1024;
-    
+    char * c = "TEST 8 ";
+    printf("TEST 8 STARTING\n");
+
+    srand(10);
+    int maxsize = (1ULL << 30) / 100;
+    size_t size = 100000;
+    int n = maxsize / size;
+
+
     test_item** items = gen_n__reg_items(size, n);
+
+    for(int i = 0; i < n ; i++)
+    {
+
+        printf("ITEM: %d \n",i);
+        database_test_put(items[i]);
+        struct ssd_line* c_it = database_test_get(items[i]);
+        size_t key = *((size_t*)(items[i]->key));
+        ssd_test_compare_if_wrong(c,items[i],c_it,key);
+    }
+    
+
     for(int i = 0; i < n ; i++)
     {
         printf("ITEM: %d \n",i);
-        database_test_put(items[i],t);
-        struct cache_item* c_it = database_test_get(items[i],t);
-        test_compare_if_wrong(c,items[i],c_it,i);
-    }
-    
-    
-    for(int i = 0; i < n ; i++)
-    {
+        struct ssd_line* c_it = database_test_get(items[i]);
+        ssd_test_compare_if_wrong(c,items[i],c_it,i);
         free(items[i]);
     }
-    
+
     free(items);
-    printf("TEST 4 END \n");
-    
+    GEN_LOG_WRITE("TEST 8 END");
+    printf("TEST 8 ENDING\n");
+
 }

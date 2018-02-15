@@ -166,8 +166,8 @@ void test_init()
 	//cache_test_init();
 	//ssd_test_init();
 	//database_test_init();
-	NVDIMM_test_init();
-	//database_test_init();
+	//NVDIMM_test_init();
+	database_test_init();
 }
 
 

@@ -26,11 +26,14 @@ void test_put(test_item* it);
 void test_put_all(test_item** items, int n);
 
 
-struct cache_item* test_get(test_item* it);
+struct ssd_line* test_get(test_item* it);
 
-void test_compare(char* c, test_item* it,struct cache_item* c_it,int n);
+void test_compare(char* c, test_item* it,struct ssd_line* c_it,int n);
 
-void test_compare_if_wrong(char* c, test_item* it,struct cache_item* c_it,int n);
+void test_compare_if_wrong(char* c, test_item* it,struct ssd_line* c_it,int n);
+
+void test_compare_if_right(char* c, test_item* it,struct ssd_line* c_it,int n);
+
 
 void cache_test_init(void);
 

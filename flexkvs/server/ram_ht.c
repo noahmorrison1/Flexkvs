@@ -39,9 +39,9 @@ static int keyNUM = 1;
 
 void cache_init(void)
 {
-	RAM_GEN_LOG_WRITE("RAM CACHE INIT INITIALIZING \n");
+	GEN_LOG_WRITE("RAM CACHE INIT INITIALIZING \n");
 	num_entries = RAM_CACHE_SIZE / LOG_BLOCK_SIZE;
-	RAM_GEN_LOG_WRITE_2("NUM_ENTRIES: ",num_entries);
+	GEN_LOG_WRITE_2("NUM_ENTRIES: ",num_entries);
 
 	// maybe multiply this later, cause will probably have more than NITEMS collisions
     ht_entry_num = (num_entries / CACHE_BUCKET_NITEMS);
@@ -74,7 +74,7 @@ void cache_init(void)
     rte_spinlock_init(&free_list.lock);
 	rte_spinlock_init(&lru.lock);
 
-    RAM_GEN_LOG_WRITE("RAM CACHE INIT INITIALIZING DONE\n");
+    GEN_LOG_WRITE("RAM CACHE INIT INITIALIZING DONE\n");
 }
 
 
@@ -148,7 +148,7 @@ void cache_hasht_prefetch2(uint32_t hv)
 
 struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv)
 {
-	RAM_GEN_LOG_WRITE("RAM CACHE GET START \n");
+	GEN_LOG_WRITE("RAM CACHE GET START \n");
 
     struct ht_entry* entry = ht + (hv % ht_entry_num);
 
@@ -169,7 +169,7 @@ struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv)
     while (it != NULL) {
 			if(it->hv == hv) 
 			{
-				RAM_GEN_LOG_WRITE("RAM CACHE GET HV EQUAL ");
+				GEN_LOG_WRITE("RAM CACHE GET HV EQUAL ");
 
 				RTE_LOCK(&it->state_lock,"ITEM STATE LOCK");
 
@@ -181,12 +181,11 @@ struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv)
 
 					if(cache_item_key_matches(it,key,keylen))
 					{	
-						RAM_GEN_LOG_WRITE("RAM CACHE GET KEY MATCHES ");
+						GEN_LOG_WRITE("RAM CACHE GET KEY MATCHES ");
 						//move to head of LRU
 						lru_update(it);
 
-						line = cache_item_to_line(it);
-						read_release(it);
+
 
 						goto done;
 					}
@@ -209,12 +208,12 @@ struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv)
 					if(gotLock)
 					{	
 
-						RAM_GEN_LOG_WRITE("RAM CACHE GET GOTLOCK ");
+						GEN_LOG_WRITE("RAM CACHE GET GOTLOCK ");
 
 						// if we are using the item, keep lock up for returning of data later....
 						if(cache_item_key_matches(it,key,keylen))
 						{	
-							RAM_GEN_LOG_WRITE("RAM CACHE GET KEY MATCHES ");
+							GEN_LOG_WRITE("RAM CACHE GET KEY MATCHES ");
 
 							RTE_LOCK(&it->state_lock,"ITEM STATE LOCK");
 							it->state = READ_STATE;
@@ -225,14 +224,11 @@ struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv)
 							//move to head of LRU
 							lru_update(it);
 
-							line = cache_item_to_line(it);
-							read_release(it);
-
 
 							goto done;
 						}
 
-						RAM_GEN_LOG_WRITE("RAM CACHE GET KEY DOESNT MATCHE ");
+						GEN_LOG_WRITE("RAM CACHE GET KEY DOESNT MATCHE ");
 						
 						//only get here if key doesnt match
 						RTE_UNLOCK(&it->lock,"CACHE ITEM LOCK");
@@ -259,7 +255,7 @@ struct ssd_line* cache_ht_get(const void *key, size_t keylen, uint32_t hv)
 			// still give us the next thing in the list
 			if(it ==  h->it)
 			{
-				RAM_GEN_LOG_WRITE_2("THEY ARE SAME ",count);
+				GEN_LOG_WRITE_2("THEY ARE SAME ",count);
 				count = 0;
 			}
 			count++;*/
@@ -271,8 +267,13 @@ done:
  	RTE_UNLOCK(&entry->barrier,"RAM CACHE BARRIER");
     RTE_UNLOCK(&entry->lock,"RAM CACHE BUCKET LOCK");
 
+    if(it != NULL)
+    {
+    	line = cache_item_to_line(it);
+		read_release(it);
+    }
 
-    RAM_GEN_LOG_WRITE("RAM CACHE GET DONE");
+    GEN_LOG_WRITE("RAM CACHE GET DONE");
     
     
     return line;
@@ -282,48 +283,86 @@ done:
 struct ssd_line* cache_item_to_line(struct cache_item* it)
 {
 
+	GEN_LOG_WRITE("ITEM TO LINE START");
+
     size_t totsize = it->keylen + it->vallen;
 	struct ssd_line* line = malloc(sizeof(struct ssd_line) + totsize);
 
-	char *dest = (char*)(line+1);
-	char* src =  (char *)(it +1);
+	if(line == NULL)
+	{
+		TEST_PRINT("MALLOC FOR CACHE READ FAILED \n");
+		return NULL;
+	}
+
+
+
+	GEN_LOG_WRITE("ITEM TO LINE 1");
+
+	char* dest = (char*)(line+1);
+	char* src =  (char*)(it +1);
 	struct fragment **more_data_ptr = &it->more_data;
+
+	GEN_LOG_WRITE("ITEM TO LINE 2");
+
 	// amount left in block
     size_t rest = LOG_BLOCK_SIZE - sizeof(struct cache_item);
     size_t amount = rest < totsize ? rest : totsize;
     // returns 0 if equal
 
+    GEN_LOG_WRITE("ITEM TO LINE 3");
+
+   	char* end = (char*)(log_ + num_entries+1) ;
+	GEN_LOG_WRITE_2("LOG END ",end - (char*)log_);
+    GEN_LOG_WRITE_2("DEST: ",dest);
+    GEN_LOG_WRITE_2("SRC: ",src - (char*)log_);
+    GEN_LOG_WRITE_2("AMOUNT: ",amount);
+
+
+
     memcpy(dest,src,amount);
+
+    GEN_LOG_WRITE("ITEM TO LINE 3");
 
 
     totsize -=  amount;
     dest += amount;
     src += amount;
-    rest-=amount;
+    rest -= amount;
+
+
+    GEN_LOG_WRITE("ITEM TO LINE 4");
+
     //when it enters this loop, it means we have already compared all of the previous block
 	while(totsize > 0)
 	{
 
 		struct fragment *frag = *more_data_ptr;
-		dest = (char *)(frag +1);
+		src = (char *)(frag +1);
 		more_data_ptr = &frag->next;
-	    rest = LOG_BLOCK_SIZE - sizeof(frag);
+	    rest = LOG_BLOCK_SIZE - sizeof( struct fragment);
 	    amount = rest < totsize ? rest : totsize;
 
 	 	memcpy(dest,src,amount);
 
-	    keylen -=  amount;
+	    totsize -=  amount;
 	    dest += amount;
 	    src += amount;
 	}
 
+
+	GEN_LOG_WRITE("ITEM TO LINE 2");
+
 	
 	char* key = (char *)(line+1);
 	line->key = key;
-	line->val = key + item->keylen;
-	line->vallen = vallen;
-	line->keylen = keylen;
+	line->val = key + it->keylen;
+	line->vallen = it->vallen;
+	line->keylen = it->keylen;
 	line->version = it->version;
+
+
+	GEN_LOG_WRITE("ITEM TO LINE END");
+
 
 
 	return line;
@@ -331,19 +370,19 @@ struct ssd_line* cache_item_to_line(struct cache_item* it)
 
 inline void read_release(struct cache_item* it)
 {
-	/*RAM_GEN_LOG_WRITE("READ RELEASE START");
+	GEN_LOG_WRITE("READ RELEASE START");
 
 	RTE_LOCK(&it->state_lock,"ITEM STATE LOCK");
 	it->readers--;
 	if(it->readers == 0) 
-	{*/
+	{
 		it->state = NON_STATE;
 		it->readers = 0;
 		RTE_UNLOCK(&it->lock,"ITEM LOCK");
-	/*}
+	}
 	RTE_UNLOCK(&it->state_lock,"ITEM STATE LOCK");
 
-	RAM_GEN_LOG_WRITE("READ RELEASE DONE");*/
+	GEN_LOG_WRITE("READ RELEASE DONE");
 
 }
 
@@ -356,11 +395,13 @@ void cache_ht_set(void *key, size_t keylen, void* val, size_t vallen, uint32_t h
 	GEN_LOG_WRITE("RAM CACHE SET START");
 
 	GEN_LOG_WRITE_2("HASH VALUE: ",hv);
-		GEN_LOG_WRITE_2("ENTRY NUM: ",ht_entry_num);
+	GEN_LOG_WRITE_2("ENTRY NUM: ",ht_entry_num);
 
 
 
 	struct ht_entry* entry = ht + (hv % ht_entry_num);
+
+
 	
 	
     RTE_LOCK(&entry->lock, "RAM CACHE BUCKET");
@@ -373,11 +414,13 @@ void cache_ht_set(void *key, size_t keylen, void* val, size_t vallen, uint32_t h
 
 		/* SHOULD NOT HAPPEN
 	    if(entry >= ht + num_entries + 1){
-			RAM_GEN_LOG_WRITE("TOO FAR ENTRY " );
+			GEN_LOG_WRITE("TOO FAR ENTRY " );
 			exit(0);
 		}*/
-
+		GEN_LOG_WRITE_2("ENTRY: ",entry - ht);
 	 	entry->it = write_entry(key,keylen,val,vallen,hv,version);
+
+	 	GEN_LOG_WRITE("DONE WRITING ENTRY");
 	 	lru_update(entry->it);
 	 	entry->valid = true;
 
@@ -518,14 +561,14 @@ done:
 
 void lru_update(struct cache_item* it)
 {	
-	RAM_GEN_LOG_WRITE("LRU UPDATE START ");
-	RAM_GEN_LOG_WRITE_2("LRU ITEM:",(size_t)it);
+	GEN_LOG_WRITE("LRU UPDATE START ");
+	GEN_LOG_WRITE_2("LRU ITEM:",(size_t)it);
 
     RTE_LOCK(&lru.lock,"LRU LOCK");
 
     if(lru.head == NULL)
     {
-    	RAM_GEN_LOG_WRITE("LRU: HEAD IS NULL");
+    	GEN_LOG_WRITE("LRU: HEAD IS NULL");
     	lru.head = it;
     	lru.tail = it;
     }
@@ -533,16 +576,16 @@ void lru_update(struct cache_item* it)
     {
     	// do nothing
     	
-    	RAM_GEN_LOG_WRITE("LRU: ITEM IS HEAD");
+    	GEN_LOG_WRITE("LRU: ITEM IS HEAD");
 
     }
     else if(it == lru.tail)
     {
 
     	// not the head
-    	RAM_GEN_LOG_WRITE("LRU: ITEM IS TAIL");
+    	GEN_LOG_WRITE("LRU: ITEM IS TAIL");
     	struct cache_item* prev = it->lru_prev;
-    	RAM_GEN_LOG_WRITE_2("LRU PREV: ",(size_t)prev);
+    	GEN_LOG_WRITE_2("LRU PREV: ",(size_t)prev);
     	prev->lru_next = NULL;
     	lru.tail = prev;
     	
@@ -554,7 +597,7 @@ void lru_update(struct cache_item* it)
 
     }
     else {
-    	RAM_GEN_LOG_WRITE("LRU: NORMAL");
+    	GEN_LOG_WRITE("LRU: NORMAL");
 		struct cache_item* next = it->lru_next;
 		struct cache_item* prev = it->lru_prev;
 
@@ -570,12 +613,12 @@ void lru_update(struct cache_item* it)
 
    	if(lru.head == lru.tail)
 	{
-		RAM_GEN_LOG_WRITE_2("LRU UPDATE HEAD IS TAIL:",(size_t)lru.tail);
+		GEN_LOG_WRITE_2("LRU UPDATE HEAD IS TAIL:",(size_t)lru.tail);
 	}
 
     RTE_UNLOCK(&lru.lock,"LRU LOCK");
 
-	RAM_GEN_LOG_WRITE("LRU UPDATE END ");
+	GEN_LOG_WRITE("LRU UPDATE END ");
 }
 
 
@@ -597,7 +640,10 @@ void lru_update(struct cache_item* it)
 void evict()
 {
 
-	RAM_GEN_LOG_WRITE("EVICT START");
+	GEN_LOG_WRITE("EVICT START");
+
+
+	printf("EVICTING \n");
 
 	//number of blocks to evict
 	int64_t amount = MIN_EVICT;
@@ -613,7 +659,7 @@ void evict()
 		RTE_UNLOCK(&lru.lock,"LRU LOCK");
 
 
-		RAM_GEN_LOG_WRITE_2("EVICTING TAIL",(size_t)tail);
+		GEN_LOG_WRITE_2("EVICTING TAIL",(size_t)tail);
 		//wont need to unlock becasuse item will be deleted
 		
 		bool gotLock = RTE_TRYLOCK(&tail->lock,"LRU TAIL");
@@ -623,8 +669,8 @@ void evict()
 		//otherwise, wait for tail to change so you can evict
 		if(gotLock)
 		{
-			remove_from_lru(tail);
 			remove_from_chain(tail);			
+			remove_from_lru(tail);
 			int freed = tail->size;
 			struct fragment* new_tail = evict_item(tail);
 			amount -= freed;
@@ -650,7 +696,7 @@ void evict()
 	RTE_UNLOCK(&free_list.lock,"FREE LIST LOCK");
 
 
-	RAM_GEN_LOG_WRITE("RAM EVICT DONE ");
+	GEN_LOG_WRITE("RAM EVICT DONE ");
 
 }
 
@@ -658,7 +704,7 @@ void evict()
 //want to remove from bucket chain
 void remove_from_chain(struct cache_item* it)
 {
-	RAM_GEN_LOG_WRITE("REMOVE FROM CHAIN START ");
+	GEN_LOG_WRITE("REMOVE FROM CHAIN START ");
 
 	struct ht_entry* entry = ht + (it->hv % ht_entry_num);
 
@@ -683,7 +729,7 @@ void remove_from_chain(struct cache_item* it)
 	RTE_UNLOCK(&entry->barrier,"RAM BUCKET BARRIER");
 
 
-	RAM_GEN_LOG_WRITE("REMOVE FROM CHAIN END");
+	GEN_LOG_WRITE("REMOVE FROM CHAIN END");
 
 }
 
@@ -694,7 +740,7 @@ void remove_from_chain(struct cache_item* it)
 // will only run single threaded
 void remove_from_lru(struct cache_item* it)
 {
-	RAM_GEN_LOG_WRITE("REMOVE FROM LRU START ");
+	GEN_LOG_WRITE("REMOVE FROM LRU START ");
 	
 	//have to grab lock so that dont have a race 
 	//condition with item writes and overwrites to the prev
@@ -709,10 +755,10 @@ void remove_from_lru(struct cache_item* it)
 
 	if(it == lru.tail)
 	{ 
-		RAM_GEN_LOG_WRITE_2("NEXT:",(size_t)next);
-		RAM_GEN_LOG_WRITE_2("PREV:",(size_t)prev);
-		RAM_GEN_LOG_WRITE_2("HEAD:",(size_t)lru.head);
-		RAM_GEN_LOG_WRITE_2("TAIL:",(size_t)lru.tail);
+		GEN_LOG_WRITE_2("NEXT:",(size_t)next);
+		GEN_LOG_WRITE_2("PREV:",(size_t)prev);
+		GEN_LOG_WRITE_2("HEAD:",(size_t)lru.head);
+		GEN_LOG_WRITE_2("TAIL:",(size_t)lru.tail);
 		lru.tail = prev;
 		
 
@@ -726,13 +772,13 @@ void remove_from_lru(struct cache_item* it)
 
 	if(lru.head == lru.tail)
 	{
-		RAM_GEN_LOG_WRITE_2("REMOVE FROM LRU HEAD IS TAIL:",(size_t)lru.tail);
+		GEN_LOG_WRITE_2("REMOVE FROM LRU HEAD IS TAIL:",(size_t)lru.tail);
 	}
 
 
     RTE_UNLOCK(&lru.lock,"LRU LOCK");
 
-    RAM_GEN_LOG_WRITE("REMOVE FROM LRU END ");
+    GEN_LOG_WRITE("REMOVE FROM LRU END ");
 
 }
 
@@ -740,7 +786,7 @@ void remove_from_lru(struct cache_item* it)
 // add to front of free list
 void add_to_free(struct cache_item* it, struct fragment* last)
 {
-	RAM_GEN_LOG_WRITE("ADD TO FREE START ");
+	GEN_LOG_WRITE("ADD TO FREE START ");
 
 	RTE_LOCK(&free_list.lock,"FREE LIST");
 	struct fragment* new_frag = (struct fragment*)it;
@@ -750,20 +796,19 @@ void add_to_free(struct cache_item* it, struct fragment* last)
 	RTE_UNLOCK(&free_list.lock,"FREE LIST");
 
 
-	RAM_GEN_LOG_WRITE("ADD TO FREE END ");
+	GEN_LOG_WRITE("ADD TO FREE END ");
 
 }
 
-void flush(void* key, size_t keylen, size_t hv)
+void cache_flush_item(struct cache_item* item)
 {
 
-	struct cache_item* item = cache_ht_get(key,keylen,hv);
-	RTE_LOCK(&item->lock,"FLUSH ITEM");
-
+	item->state = 0;
+	item->readers = 0;
 	remove_from_lru(item);
 	remove_from_chain(item);			
-	int freed = ->item;
-	struct fragment* new_tail = evict_item(tail);
+	int freed = item->size;
+	struct fragment* new_tail = evict_item(item);
 
 	add_to_free(item,new_tail);
 
@@ -777,17 +822,141 @@ void flush(void* key, size_t keylen, size_t hv)
 }
 
 
+//specialized for flush rn
+void cache_flush(void *key, size_t keylen, uint32_t hv)
+{
+	GEN_LOG_WRITE("RAM CACHE GET START \n");
+
+    struct ht_entry* entry = ht + (hv % ht_entry_num);
+
+    
+    if(!entry->valid) return NULL;
+
+
+    //lock the tnery from any other read or write temporarily
+    RTE_LOCK(&entry->lock,"RAM BUCKET LOCK");
+
+    struct cache_item* it = entry->it;
+
+    //lock down the barrier so no one else can enter
+    RTE_LOCK(&entry->barrier,"RAM CACHE BARRIER");
+
+    //if I have both of these locks can only be in READ STATE
+
+
+
+    //traverse bucket
+    while (it != NULL) {
+			if(it->hv == hv) 
+			{
+				
+				//here cannot be in write state
+
+				RTE_LOCK(&it->state_lock,"ITEM STATE LOCK");
+
+				//if were in a modifiable state 
+				if(it->state == READ_STATE)
+				{
+					it->readers++;
+					RTE_UNLOCK(&it->state_lock,"ITEM STATE LOCK");
+
+					//so evict wont get it
+					//then wait so im the only reader
+					if(cache_item_key_matches(it,key,keylen)) {
+						
+						//while there are other readers, lets block out evict actually 
+
+						RTE_LOCK(&it->state_lock,"ITEM STATE LOCK");
+						while(it->readers > 1)
+						{
+							RTE_UNLOCK(&it->state_lock,"ITEM STATE LOCK");
+							//RTE_UNLOCK(&entry->barrier, "RAM CACHE BARRIER");
+							usleep(1);
+							//RTE_LOCK(&entry->barrier, "RAM CACHE BARRIER");
+							RTE_LOCK(&it->state_lock,"ITEM STATE LOCK");
+						}
+		
+						//I have lock now, in reader form
+						//and no new readers can come in beacuse I have barrier and entry locks
+						goto done;
+					}
+					else
+					{
+						read_release(it);
+					}
+				}
+
+				//we are guaranteed here the state is nothing
+				//so if we get the lock then its our, otherwise its being evicted
+
+
+				//check to see if someone else has lock...
+				bool gotLock = RTE_TRYLOCK(&it->lock,"CACHE ITEM LOCK");
+				RTE_UNLOCK(&it->state_lock,"ITEM STATE LOCK");
+
+				//if we dont get the lock its being evicted 
+				if(gotLock)
+				{
+					if(cache_item_key_matches(it,key,keylen) )
+					{						    
+						goto done;
+					}
+
+					
+					RTE_UNLOCK(&it->lock,"RAM CACHE ITEM LOCK");
+						
+				}
+				else  // we know that this item is being evicted
+				{
+
+					//we want to keep looking but first let the eviction remove the item
+					it = it->next;
+					//no release the barrier for eviction, then continue
+					RTE_UNLOCK(&entry->barrier,"RAM CACHE BARRIER")
+					usleep(1);
+					RTE_LOCK(&entry->barrier,"RAM CACHE BUCKET")
+					continue;					
+				}
+
+				
+			}
+			
+			/*// important to note that even when evicting, the it->next should
+			// still give us the next thing in the list
+			if(it ==  h->it)
+			{
+				GEN_LOG_WRITE_2("THEY ARE SAME ",count);
+				count = 0;
+			}
+			count++;*/
+			it = it->next;
+    }
+
+done:
+
+ 	RTE_UNLOCK(&entry->barrier,"RAM CACHE BARRIER");
+    RTE_UNLOCK(&entry->lock,"RAM CACHE BUCKET LOCK");
+
+
+    if(it != NULL) cache_flush_item(it);
+
+    GEN_LOG_WRITE("RAM CACHE GET DONE");
+    
+    
+}
+
+
 
 struct fragment* evict_item(struct cache_item *it)
 {
-	RAM_GEN_LOG_WRITE("STARTING EVICT ITEM");
+	GEN_LOG_WRITE("STARTING EVICT ITEM");
 	struct fragment* last = (struct fragment*)it;
 	struct fragment* first = last;
 
 
 	//TESTING
 	size_t* key = (size_t*)(it+1);
-	RAM_GEN_LOG_WRITE_2("EVICTING ITEM: ",*key);
+	GEN_LOG_WRITE_2("EVICTING ITEM: ",*key);
 
     struct fragment *frag = it->more_data;
 
@@ -821,7 +990,7 @@ struct fragment* evict_item(struct cache_item *it)
 
     }
 
-    RAM_GEN_LOG_WRITE("ENDING EVICT ITEM");
+    GEN_LOG_WRITE("ENDING EVICT ITEM");
 
     return last;
 }
@@ -838,34 +1007,59 @@ and someone else is already evicting, block, then check to see if you still need
  **/
 void* getFree()
 {
-	RAM_GEN_LOG_WRITE("GET FREE STARTING ");
+	GEN_LOG_WRITE("GET FREE STARTING ");
 
-	if(free_list.num_free_blocks < EVICT_POINT)
+
+	RTE_LOCK(&free_list.lock,"FREE LIST LOCK");
+
+	size_t num_free_blocks = free_list.num_free_blocks;
+
+	RTE_UNLOCK(&free_list.lock,"FREE LIST LOCK");
+
+
+	GEN_LOG_WRITE("MOVING TO EVICT");
+
+	if(num_free_blocks < EVICT_POINT)
 	{
-		
+
+		GEN_LOG_WRITE("ABOUT TO TRY AND EVICT");
+
 		RTE_LOCK(&evict_lock,"EVICT LOCK");
+
+		RTE_LOCK(&free_list.lock,"FREE LIST LOCK");
+
+		num_free_blocks = free_list.num_free_blocks;
+	
+		RTE_UNLOCK(&free_list.lock,"FREE LIST LOCK");
+
 		
-		if(free_list.num_free_blocks < EVICT_POINT){
+		if(num_free_blocks < EVICT_POINT){
 			evict();
 		}
 		
 		RTE_UNLOCK(&evict_lock,"EVICT LOCK");
+
+
 	}
 
-	//RTE_LOCK(&free_list.lock,"FREE LIST LOCK");
-	rte_spinlock_lock(&free_list.lock);
+	RTE_LOCK(&free_list.lock,"FREE LIST LOCK");
+	//rte_spinlock_lock(&free_list.lock);
+
 
 
 	struct fragment *head = (struct fragment*)free_list.head;
 
-	
+   	char* end = (char*)(log_ + num_entries+1) ;
+	GEN_LOG_WRITE_2("LOG END ",end - (char*)log_);
+	GEN_LOG_WRITE_2("GET FREE HEAD ",(char*)head - (char*)log_);
+	GEN_LOG_WRITE_2("GET FREE NEXT ",(char*)head->nextFree - (char*)log_);
+
+
 
 	struct log_entry* next = head->nextFree;
 
-	RAM_GEN_LOG_WRITE_2("GET FREE HEAD ",(size_t)head);
-	RAM_GEN_LOG_WRITE_2("GET FREE NEXT ",(size_t)next);
-	size_t end = (size_t)(log_ + num_entries+1);
-	RAM_GEN_LOG_WRITE_2("LOG END ",end);
+	GEN_LOG_WRITE_2("GET FREE NEXT ",(size_t)next);
+
 
 	//if we have no pointer to next, then it is simply the next block
 	if(next == NULL) next = free_list.head+1;
@@ -879,9 +1073,9 @@ void* getFree()
 
 	
 	//RTE_UNLOCK(&free_list.lock,"FREE LIST LOCK");
-	rte_spinlock_unlock(&free_list.lock);
+	RTE_UNLOCK(&free_list.lock,"FREE LIST LOCK");
 
-	RAM_GEN_LOG_WRITE("GET FREE ENDING ");
+	GEN_LOG_WRITE("GET FREE ENDING ");
 
 	return (void *)head;
 
@@ -897,7 +1091,7 @@ void* getFree()
 **/
 struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t vallen, uint32_t hv,size_t version)
 {
-	RAM_GEN_LOG_WRITE("WRITE_ENTRY START ");
+	GEN_LOG_WRITE("WRITE_ENTRY START ");
 
 
 
@@ -914,6 +1108,7 @@ struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t valle
 	//TESTING
 	keyNUM++;
 
+	GEN_LOG_WRITE("STARTING WRITE ALLOC");
 	struct cache_item* it = getFree();
 	it->valid = true;
 	it->hv = hv;
@@ -927,6 +1122,8 @@ struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t valle
 	it->lru_prev = NULL;
 	rte_spinlock_init(&it->lock);
 	rte_spinlock_init(&it->state_lock);
+
+
 
     it->keylen = keylen;
     it->vallen = vallen;
@@ -944,8 +1141,8 @@ struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t valle
 	if(frag == NULL)
 	{
 		//if we didnt write into a new fragment, just move up our dest and rest
-		RAM_GEN_LOG_WRITE("NO NEW FRAG");
-		RAM_GEN_LOG_WRITE_2("NEW DATA PTR",(size_t)*more_data_ptr);
+		GEN_LOG_WRITE("NO NEW FRAG");
+		GEN_LOG_WRITE_2("NEW DATA PTR",(size_t)*more_data_ptr);
 		dest += keylen;
 		rest -= keylen;
 	}
@@ -953,7 +1150,7 @@ struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t valle
 	{
 		// if we wrote into a fragment, move our dest
 		// data_ptr, and rest up accordingly
-		RAM_GEN_LOG_WRITE("NEW FRAG");
+		GEN_LOG_WRITE("NEW FRAG");
 		more_data_ptr = &frag->next;
 		dest=((char *)(frag+1));
 		dest += frag->size;
@@ -965,7 +1162,7 @@ struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t valle
     cache_write(rest,src,dest,vallen, more_data_ptr,it);
 
 
-    RAM_GEN_LOG_WRITE("WRITE_ENTRY END ");
+    GEN_LOG_WRITE("WRITE_ENTRY END ");
 
     return it;
 }
@@ -976,7 +1173,7 @@ struct cache_item* write_entry(void *key, size_t keylen, void* val, size_t valle
 // if the fragment points to more fragemnts uses them, otherwise uses new block
 struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,struct fragment **more_data_ptr,struct cache_item* it)
 {
-	RAM_GEN_LOG_WRITE("WRITE START  ");
+	GEN_LOG_WRITE("WRITE START  ");
 
 	struct fragment *frag = NULL;
 
@@ -984,7 +1181,7 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
 	// if we dont have a more data ptr,
 	if(rest == 0)
     {
-    	RAM_GEN_LOG_WRITE("WRITE REST RESET 0");
+    	GEN_LOG_WRITE("WRITE REST RESET 0");
     	// empty block then get new block
     	//otherwise use already allocated stuff
     	if(*more_data_ptr == NULL)
@@ -995,7 +1192,7 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
     	}
     	else
     	{
-    		RAM_GEN_LOG_WRITE("OVERWRITE ACTIVATED at RESET 0");
+    		GEN_LOG_WRITE("OVERWRITE ACTIVATED at RESET 0");
     		frag = *more_data_ptr;
     	}
     	dest = (char *)(frag+1);
@@ -1015,10 +1212,10 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
 
 	//TESTING
 	//display(src,dest,amount);
-	RAM_GEN_LOG_WRITE_2("MEMSET:  ",(size_t) dest);
-	RAM_GEN_LOG_WRITE_2("END: ",(size_t) end);
+	GEN_LOG_WRITE_2("MEMSET:  ",(size_t) dest);
+	GEN_LOG_WRITE_2("END: ",(size_t) end);
 	MEMCPY(dest,src,amount,"CACHE WRITE");
-	RAM_GEN_LOG_WRITE("MEMSET DONE");
+	GEN_LOG_WRITE("MEMSET DONE");
 
 
 
@@ -1040,14 +1237,14 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
     	//if here implies we are at start of a block
     	if(*more_data_ptr == NULL)
     	{
-    		RAM_GEN_LOG_WRITE("MORE DATA IS NULL");
+    		GEN_LOG_WRITE("MORE DATA IS NULL");
     		frag  = (struct fragment*)getFree();
     		*more_data_ptr = frag;
     		it->size +=1;
     	}
     	else
     	{
-    		RAM_GEN_LOG_WRITE_2("MORE DATA EXISTS",(size_t)*more_data_ptr);
+    		GEN_LOG_WRITE_2("MORE DATA EXISTS",(size_t)*more_data_ptr);
     		frag = *more_data_ptr;
     	}
 
@@ -1056,10 +1253,10 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
     	rest = LOG_BLOCK_SIZE - sizeof(struct fragment);
 	    amount = rest < length ? rest : length;
 
-	    RAM_GEN_LOG_WRITE_2("MEMSET:  ",(size_t) dest);
-		RAM_GEN_LOG_WRITE_2("BEG: ",(size_t)log_ );
+	    GEN_LOG_WRITE_2("MEMSET:  ",(size_t) dest);
+		GEN_LOG_WRITE_2("BEG: ",(size_t)log_ );
 		MEMCPY(dest,src,amount,"CACHE WRITE");
-		RAM_GEN_LOG_WRITE("MEMSET DONE");
+		GEN_LOG_WRITE("MEMSET DONE");
 
 	    length -= amount;
 
@@ -1090,7 +1287,7 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
 
 
 
- 	RAM_GEN_LOG_WRITE("WRITE END ");
+ 	GEN_LOG_WRITE("WRITE END ");
 
     return frag;
 
@@ -1100,7 +1297,7 @@ struct fragment* cache_write(size_t rest,char *src, char *dest,int64_t length,st
 //will never enter here if evicting block, and will never try and evict if entering here
 void overwrite(struct cache_item* it, void* val, size_t vallen, size_t verison)
 {
-	RAM_GEN_LOG_WRITE("OVERWRITE START ");
+	GEN_LOG_WRITE("OVERWRITE START ");
 	//lru_update(it);
 
 	size_t keylen = it->keylen;
@@ -1131,7 +1328,7 @@ void overwrite(struct cache_item* it, void* val, size_t vallen, size_t verison)
 	}
 
 	cache_write(rest,val,dest,vallen, more_data_ptr,it);
-	RAM_GEN_LOG_WRITE("OVERWRITE END ");
+	GEN_LOG_WRITE("OVERWRITE END ");
 }
 
 
